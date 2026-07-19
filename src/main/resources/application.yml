@@ -1,0 +1,124 @@
+server:
+  port: 8080
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+gaokao:
+  auth-token-secret: ${GAOKAO_AUTH_TOKEN_SECRET:change-me-local-secret}
+  auth-token-expire-seconds: ${GAOKAO_AUTH_TOKEN_EXPIRE_SECONDS:604800}
+  trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:${GAOKAO_TRIAL_DAILY_LIMIT:5}}
+  local-auth-fallback-enabled: ${GAOKAO_LOCAL_AUTH_FALLBACK_ENABLED:false}
+  request-open-id-fallback-enabled: ${GAOKAO_REQUEST_OPENID_FALLBACK_ENABLED:false}
+  billing-debug-enabled: ${GAOKAO_BILLING_DEBUG_ENABLED:false}
+  runtime:
+    strict-startup-checks: ${GAOKAO_STRICT_STARTUP_CHECKS:false}
+  storage:
+    state-file: ${GAOKAO_STATE_FILE:./data/runtime-state.json}
+    database:
+      enabled: ${GAOKAO_DATABASE_ENABLED:${GAOKAO_POSTGRES_ENABLED:${GAOKAO_MYSQL_ENABLED:false}}}
+      url: ${GAOKAO_DATABASE_URL:${GAOKAO_POSTGRES_URL:${GAOKAO_MYSQL_URL:}}}
+      username: ${GAOKAO_DATABASE_USERNAME:${GAOKAO_POSTGRES_USERNAME:${GAOKAO_MYSQL_USERNAME:}}}
+      password: ${GAOKAO_DATABASE_PASSWORD:${GAOKAO_POSTGRES_PASSWORD:${GAOKAO_MYSQL_PASSWORD:}}}
+      driver-class-name: ${GAOKAO_DATABASE_DRIVER_CLASS_NAME:${GAOKAO_POSTGRES_DRIVER_CLASS_NAME:${GAOKAO_MYSQL_DRIVER_CLASS_NAME:org.postgresql.Driver}}}
+  knowledge:
+    enabled: ${GAOKAO_KNOWLEDGE_ENABLED:true}
+  wechat:
+    app-id: ${WECHAT_APP_ID:}
+    app-secret: ${WECHAT_APP_SECRET:}
+    strict-code2-session: ${WECHAT_STRICT_CODE2SESSION:false}
+    code2-session-url: ${WECHAT_CODE2SESSION_URL:https://api.weixin.qq.com/sns/jscode2session}
+    stable-token-url: ${WECHAT_STABLE_TOKEN_URL:https://api.weixin.qq.com/cgi-bin/stable_token}
+    msg-sec-check-url: ${WECHAT_MSG_SEC_CHECK_URL:https://api.weixin.qq.com/wxa/msg_sec_check}
+  security:
+    msg-sec-enabled: ${GAOKAO_MSG_SEC_ENABLED:false}
+    health-details-enabled: ${GAOKAO_HEALTH_DETAILS_ENABLED:false}
+    health-issue-details-enabled: ${GAOKAO_HEALTH_ISSUE_DETAILS_ENABLED:false}
+    rate-limit-enabled: ${GAOKAO_RATE_LIMIT_ENABLED:true}
+    auth-per-minute: ${GAOKAO_AUTH_PER_MINUTE:12}
+    essay-submit-per-minute: ${GAOKAO_ESSAY_SUBMIT_PER_MINUTE:10}
+    history-read-per-minute: ${GAOKAO_HISTORY_READ_PER_MINUTE:60}
+    ocr-per-minute: ${GAOKAO_OCR_PER_MINUTE:10}
+    max-upload-bytes: ${GAOKAO_MAX_UPLOAD_BYTES:5242880}
+  ai:
+    base-url: ${GAOKAO_AI_BASE_URL:}
+    api-key: ${GAOKAO_AI_API_KEY:}
+    model: ${GAOKAO_AI_MODEL:}
+    provider-name: ${GAOKAO_AI_PROVIDER:openai-compatible}
+    temperature: ${GAOKAO_AI_TEMPERATURE:0.7}
+    timeout-seconds: ${GAOKAO_AI_TIMEOUT_SECONDS:90}
+  ocr:
+    enabled: ${GAOKAO_OCR_ENABLED:false}
+    base-url: ${GAOKAO_OCR_BASE_URL:${GAOKAO_AI_BASE_URL:}}
+    api-key: ${GAOKAO_OCR_API_KEY:${GAOKAO_AI_API_KEY:}}
+    model: ${GAOKAO_OCR_MODEL:}
+    provider-name: ${GAOKAO_OCR_PROVIDER:${GAOKAO_AI_PROVIDER:openai-compatible}}
+    timeout-seconds: ${GAOKAO_OCR_TIMEOUT_SECONDS:${GAOKAO_AI_TIMEOUT_SECONDS:90}}
+    tencent-secret-id: ${GAOKAO_OCR_TENCENT_SECRET_ID:}
+    tencent-secret-key: ${GAOKAO_OCR_TENCENT_SECRET_KEY:}
+    tencent-region: ${GAOKAO_OCR_TENCENT_REGION:}
+    tencent-action: ${GAOKAO_OCR_TENCENT_ACTION:GeneralAccurateOCR}
+    tencent-version: ${GAOKAO_OCR_TENCENT_VERSION:2018-11-19}
+    tencent-language-type: ${GAOKAO_OCR_TENCENT_LANGUAGE_TYPE:zh}
+  membership:
+    trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:${GAOKAO_TRIAL_DAILY_LIMIT:5}}
+    quota-zone-id: ${GAOKAO_QUOTA_ZONE_ID:Asia/Shanghai}
+    allow-debug-subscription-activate: ${GAOKAO_BILLING_DEBUG_ENABLED:true}
+    monthly:
+      code: monthly
+      name: 包月会员
+      description: 30 天不限次作文生成与严格批改
+      duration-days: 30
+      price-fen: 3900
+      recommended: false
+    yearly:
+      code: yearly
+      name: 包年会员
+      description: 365 天不限次，更适合长期备考
+      duration-days: 365
+      price-fen: 29900
+      recommended: true
+  payment:
+    enabled: ${GAOKAO_PAYMENT_ENABLED:false}
+    notify-url: ${GAOKAO_PAYMENT_NOTIFY_URL:}
+    currency: ${GAOKAO_PAYMENT_CURRENCY:CNY}
+    order-description-prefix: ${GAOKAO_PAYMENT_DESCRIPTION_PREFIX:高考英语作文会员}
+    wechat:
+      merchant-id: ${WECHAT_PAY_MERCHANT_ID:}
+      merchant-serial-number: ${WECHAT_PAY_MERCHANT_SERIAL_NUMBER:}
+      private-key-pem: ${WECHAT_PAY_PRIVATE_KEY_PEM:}
+      private-key-file: ${WECHAT_PAY_PRIVATE_KEY_FILE:}
+      platform-public-key-pem: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_PEM:}
+      platform-public-key-file: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_FILE:}
+      platform-serial-number: ${WECHAT_PAY_PLATFORM_SERIAL_NUMBER:}
+      api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
+      jsapi-url: ${WECHAT_PAY_JSAPI_URL:https://api.mch.weixin.qq.com/v3/pay/transactions/jsapi}
+      order-query-base-url: ${WECHAT_PAY_ORDER_QUERY_BASE_URL:https://api.mch.weixin.qq.com}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: release
+
+gaokao:
+  local-auth-fallback-enabled: false
+  request-open-id-fallback-enabled: false
+  billing-debug-enabled: false
+  runtime:
+    strict-startup-checks: true
+  security:
+    msg-sec-enabled: true
+  wechat:
+    strict-code2-session: true
+  membership:
+    allow-debug-subscription-activate: false

@@ -1,0 +1,36 @@
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: ${BACKEND_IMAGE_NAME:-gaokao-essay-backend}:latest
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      SPRING_PROFILES_ACTIVE: release
+      GAOKAO_STATE_FILE: /app/data/runtime-state.json
+    expose:
+      - "8080"
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8080}:8080"
+    volumes:
+      - backend-data:/app/data
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/www:/var/www/certbot
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+
+volumes:
+  backend-data:

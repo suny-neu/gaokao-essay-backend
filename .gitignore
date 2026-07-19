@@ -1,0 +1,5 @@
+target/
+.env.release.local
+.env.local
+deploy/lighthouse/.env
+*.log

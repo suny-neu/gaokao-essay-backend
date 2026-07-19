@@ -1,0 +1,7 @@
+.git
+.m2-temp
+target
+data
+.env.release.local
+.env.local
+*.log
