@@ -45,10 +45,13 @@ gaokao:
     health-issue-details-enabled: ${GAOKAO_HEALTH_ISSUE_DETAILS_ENABLED:false}
     rate-limit-enabled: ${GAOKAO_RATE_LIMIT_ENABLED:true}
     auth-per-minute: ${GAOKAO_AUTH_PER_MINUTE:12}
-    essay-submit-per-minute: ${GAOKAO_ESSAY_SUBMIT_PER_MINUTE:10}
+    essay-submit-per-minute: ${GAOKAO_ESSAY_SUBMIT_PER_MINUTE:5}
     history-read-per-minute: ${GAOKAO_HISTORY_READ_PER_MINUTE:60}
-    ocr-per-minute: ${GAOKAO_OCR_PER_MINUTE:10}
+    ocr-per-minute: ${GAOKAO_OCR_PER_MINUTE:5}
     max-upload-bytes: ${GAOKAO_MAX_UPLOAD_BYTES:5242880}
+    challenge-enabled: ${GAOKAO_CHALLENGE_ENABLED:true}
+    challenge-ttl-seconds: ${GAOKAO_CHALLENGE_TTL_SECONDS:60}
+    challenge-per-minute: ${GAOKAO_CHALLENGE_PER_MINUTE:10}
   ai:
     base-url: ${GAOKAO_AI_BASE_URL:}
     api-key: ${GAOKAO_AI_API_KEY:}

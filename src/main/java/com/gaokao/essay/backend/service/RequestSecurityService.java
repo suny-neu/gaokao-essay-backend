@@ -38,6 +38,10 @@ public class RequestSecurityService {
     checkByUser(userId, "ocr-user", properties.getSecurity().getOcrPerMinute(), 60, "你的 OCR 请求过于频繁，请稍后再试");
   }
 
+  public void checkChallengeAttempt(HttpServletRequest request) {
+    checkByIp(request, "challenge-ip", properties.getSecurity().getChallengePerMinute(), 60, "验证请求过于频繁，请稍后再试");
+  }
+
   private void checkByIp(HttpServletRequest request, String scope, int limit, int windowSeconds, String message) {
     check(scope, resolveClientIp(request), limit, windowSeconds, message);
   }
@@ -73,6 +77,10 @@ public class RequestSecurityService {
   }
 
   private String resolveClientIp(HttpServletRequest request) {
+    return resolveClientIpStatic(request);
+  }
+
+  public static String resolveClientIpStatic(HttpServletRequest request) {
     if (request == null) {
       return "unknown";
     }
@@ -92,7 +100,7 @@ public class RequestSecurityService {
     return remoteAddr == null || remoteAddr.isBlank() ? "unknown" : remoteAddr.trim();
   }
 
-  private String normalizeHeader(String value) {
+  private static String normalizeHeader(String value) {
     return value == null ? "" : value.trim();
   }
 

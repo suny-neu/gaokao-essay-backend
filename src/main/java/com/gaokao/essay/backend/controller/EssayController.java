@@ -5,6 +5,7 @@ import com.gaokao.essay.backend.model.ApiResponse;
 import com.gaokao.essay.backend.model.AuthenticatedUser;
 import com.gaokao.essay.backend.model.EssayTaskRequest;
 import com.gaokao.essay.backend.service.EssayService;
+import com.gaokao.essay.backend.service.ChallengeService;
 import com.gaokao.essay.backend.service.RequestSecurityService;
 import com.gaokao.essay.backend.service.SessionService;
 import com.gaokao.essay.backend.service.WechatService;
@@ -39,6 +40,7 @@ public class EssayController {
   private final SessionService sessionService;
   private final WechatService wechatService;
   private final RequestSecurityService requestSecurityService;
+  private final ChallengeService challengeService;
   private final ObjectMapper objectMapper;
   private final com.gaokao.essay.backend.service.HistoryService historyService;
 
@@ -47,6 +49,7 @@ public class EssayController {
       SessionService sessionService,
       WechatService wechatService,
       RequestSecurityService requestSecurityService,
+      ChallengeService challengeService,
       ObjectMapper objectMapper,
       com.gaokao.essay.backend.service.HistoryService historyService
   ) {
@@ -54,18 +57,35 @@ public class EssayController {
     this.sessionService = sessionService;
     this.wechatService = wechatService;
     this.requestSecurityService = requestSecurityService;
+    this.challengeService = challengeService;
     this.objectMapper = objectMapper;
     this.historyService = historyService;
+  }
+
+  @GetMapping("/challenge")
+  public ApiResponse<Map<String, Object>> getChallenge(
+      HttpServletRequest servletRequest,
+      @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+  ) {
+    requestSecurityService.checkChallengeAttempt(servletRequest);
+    String userId = resolveChallengeSubject(servletRequest, authorizationHeader);
+    String challenge = challengeService.issueChallenge(userId);
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("challenge", challenge);
+    data.put("ttlSeconds", challengeService.getChallengeTtlSeconds());
+    return ApiResponse.ok(data);
   }
 
   @PostMapping(produces = MediaType.TEXT_PLAIN_VALUE)
   public ResponseEntity<StreamingResponseBody> submitEssayTask(
       HttpServletRequest servletRequest,
       @Valid @RequestBody EssayTaskRequest request,
-      @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+      @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+      @RequestHeader(value = "X-Challenge", required = false) String challengeHeader
   ) {
     LoginSession loginSession = resolveLoginSession(servletRequest, authorizationHeader, request.getOpenId(), request.getWxCode());
     requestSecurityService.checkEssaySubmission(servletRequest, loginSession.user().userId());
+    challengeService.consumeChallenge(challengeHeader, loginSession.user().userId());
     EssayService.EssayExecution execution = essayService.execute(loginSession.user(), request);
 
     StreamingResponseBody stream = outputStream -> {
@@ -132,6 +152,21 @@ public class EssayController {
     AuthenticatedUser user = sessionService.requireUser(request, authorizationHeader, null);
     requestSecurityService.checkHistoryRead(request, user.userId());
     return ApiResponse.ok(historyService.clearRecords(user, mode, essayType, taskStatus));
+  }
+
+  private String resolveChallengeSubject(
+      HttpServletRequest request,
+      String authorizationHeader
+  ) {
+    AuthenticatedUser tokenUser = sessionService.resolveUserByToken(extractBearerToken(authorizationHeader));
+    if (tokenUser != null) {
+      return tokenUser.userId();
+    }
+    AuthenticatedUser attrUser = sessionService.currentUser(request);
+    if (attrUser != null) {
+      return attrUser.userId();
+    }
+    return RequestSecurityService.resolveClientIpStatic(request);
   }
 
   private LoginSession resolveLoginSession(

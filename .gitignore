@@ -3,3 +3,5 @@ target/
 .env.local
 deploy/lighthouse/.env
 *.log
+supabase/.temp/
+.DS_Store

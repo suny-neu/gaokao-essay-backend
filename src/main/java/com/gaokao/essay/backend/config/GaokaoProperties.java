@@ -274,10 +274,13 @@ public class GaokaoProperties {
     private boolean healthIssueDetailsEnabled;
     private boolean rateLimitEnabled = true;
     private int authPerMinute = 12;
-    private int essaySubmitPerMinute = 10;
+    private int essaySubmitPerMinute = 5;
     private int historyReadPerMinute = 60;
-    private int ocrPerMinute = 10;
+    private int ocrPerMinute = 5;
     private long maxUploadBytes = 5L * 1024L * 1024L;
+    private boolean challengeEnabled = true;
+    private long challengeTtlSeconds = 60L;
+    private int challengePerMinute = 10;
 
     public boolean isMsgSecEnabled() {
       return msgSecEnabled;
@@ -349,6 +352,30 @@ public class GaokaoProperties {
 
     public void setMaxUploadBytes(long maxUploadBytes) {
       this.maxUploadBytes = maxUploadBytes;
+    }
+
+    public boolean isChallengeEnabled() {
+      return challengeEnabled;
+    }
+
+    public void setChallengeEnabled(boolean challengeEnabled) {
+      this.challengeEnabled = challengeEnabled;
+    }
+
+    public long getChallengeTtlSeconds() {
+      return challengeTtlSeconds;
+    }
+
+    public void setChallengeTtlSeconds(long challengeTtlSeconds) {
+      this.challengeTtlSeconds = challengeTtlSeconds;
+    }
+
+    public int getChallengePerMinute() {
+      return challengePerMinute;
+    }
+
+    public void setChallengePerMinute(int challengePerMinute) {
+      this.challengePerMinute = challengePerMinute;
     }
   }
 
