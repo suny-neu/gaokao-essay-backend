@@ -71,13 +71,19 @@ public class MembershipService {
 
     List<String> consumedQuotaTypes = new ArrayList<>();
     if (!tryConsumeTrialQuota(user.userId(), buildTotalTrialQuotaType(), resolveTrialLimit(), consumedQuotaTypes)) {
-      throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TRIAL_LIMIT_REACHED", "免费体验次数已用完，开通会员后可继续使用");
+      if (tryConsumeAdRewardCredit(user.userId(), consumedQuotaTypes)) {
+        return finalizeAdRewardReservation(user, deviceId, clientIp, consumedQuotaTypes, now);
+      }
+      throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TRIAL_LIMIT_REACHED", "免费体验次数已用完，看广告可继续获得批改次数");
     }
 
     int dailyLimit = resolveTrialDailyLimit();
     if (!tryConsumeTrialQuota(user.userId(), buildDailyTrialQuotaType(now), dailyLimit, consumedQuotaTypes)) {
       rollbackConsumedQuotas(user.userId(), consumedQuotaTypes);
-      throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TRIAL_DAILY_LIMIT_REACHED", "今日免费体验次数已用完，请明天再试或开通会员继续使用");
+      if (tryConsumeAdRewardCredit(user.userId(), consumedQuotaTypes)) {
+        return finalizeAdRewardReservation(user, deviceId, clientIp, consumedQuotaTypes, now);
+      }
+      throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TRIAL_DAILY_LIMIT_REACHED", "今日免费体验次数已用完，看广告可继续获得批改次数");
     }
 
     List<String> abuseKeys = new ArrayList<>();
@@ -109,6 +115,52 @@ public class MembershipService {
     return UsageReservation.trial(user.userId(), consumedQuotaTypes, abuseKeys);
   }
 
+  private UsageReservation finalizeAdRewardReservation(
+      AuthenticatedUser user,
+      String deviceId,
+      String clientIp,
+      List<String> consumedQuotaTypes,
+      Instant now
+  ) {
+    List<String> abuseKeys = new ArrayList<>();
+    try {
+      consumeExternalDailyQuota(
+          "device-day",
+          deviceId,
+          properties.getMembership().getDeviceDailyLimit(),
+          "DEVICE_DAILY_LIMIT_REACHED",
+          "当前设备今日次数已用完",
+          abuseKeys,
+          now
+      );
+      consumeExternalDailyQuota(
+          "ip-day",
+          clientIp,
+          properties.getMembership().getIpDailyLimit(),
+          "IP_DAILY_LIMIT_REACHED",
+          "当前网络今日次数已用完",
+          abuseKeys,
+          now
+      );
+    } catch (RuntimeException error) {
+      rollbackConsumedQuotas(user.userId(), consumedQuotaTypes);
+      rollbackAbuseKeys(abuseKeys);
+      throw error;
+    }
+    return UsageReservation.trial(user.userId(), consumedQuotaTypes, abuseKeys);
+  }
+
+  private boolean tryConsumeAdRewardCredit(String userId, List<String> consumedQuotaTypes) {
+    if (!properties.getMembership().getAdReward().isEnabled()) {
+      return false;
+    }
+    if (userUsageQuotaRepository.consumeCredit(userId, buildAdRewardQuotaType())) {
+      consumedQuotaTypes.add(buildAdRewardQuotaType());
+      return true;
+    }
+    return false;
+  }
+
   public void releaseReservation(UsageReservation reservation) {
     if (reservation == null || !reservation.countedTrial()) {
       return;
@@ -117,8 +169,47 @@ public class MembershipService {
     rollbackAbuseKeys(reservation.abuseKeys());
   }
 
+  public Map<String, Object> grantAdReward(AuthenticatedUser user, String deviceId, String clientIp) {
+    Instant now = clock.instant();
+    GaokaoProperties.AdReward adRewardConfig = properties.getMembership().getAdReward();
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("enabled", adRewardConfig.isEnabled());
+
+    if (!adRewardConfig.isEnabled()) {
+      throw new ApiException(HttpStatus.FORBIDDEN, "AD_REWARD_DISABLED", "看广告得次数功能未开启");
+    }
+
+    int dailyMax = adRewardConfig.getDailyMax();
+    if (dailyMax > 0) {
+      String dailyKey = buildAdRewardDailyKey(deviceId, clientIp, now);
+      Duration dailyTtl = Duration.between(now, nextQuotaResetAt(now));
+      if (!abuseProtectionStore.tryConsume(dailyKey, dailyMax, dailyTtl)) {
+        throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "AD_REWARD_DAILY_LIMIT", "今日看广告次数已达上限");
+      }
+    }
+
+    int grantAmount = adRewardConfig.getGrantPerView();
+    int maxCredits = adRewardConfig.getMaxCredits();
+    userUsageQuotaRepository.grantCredits(user.userId(), buildAdRewardQuotaType(), grantAmount, maxCredits);
+
+    UserUsageQuota creditQuota = userUsageQuotaRepository
+        .findByUserIdAndQuotaType(user.userId(), buildAdRewardQuotaType())
+        .orElse(new UserUsageQuota(user.userId(), buildAdRewardQuotaType(), 0, maxCredits, now));
+
+    result.put("granted", grantAmount);
+    result.put("adRewardCredits", Math.max(creditQuota.usedCount(), 0));
+    result.put("adRewardMaxCredits", maxCredits);
+    return result;
+  }
+
   public Map<String, Object> getEntitlement(AuthenticatedUser user) {
-    return toMap(buildSnapshot(user.userId(), clock.instant()));
+    Instant now = clock.instant();
+    Map<String, Object> data = toMap(buildSnapshot(user.userId(), now));
+    data.put("adRewardEnabled", properties.getMembership().getAdReward().isEnabled());
+    data.put("adRewardCredits", resolveAdRewardCredits(user.userId(), now));
+    data.put("adRewardMaxCredits", properties.getMembership().getAdReward().getMaxCredits());
+    data.put("adRewardGrantPerView", properties.getMembership().getAdReward().getGrantPerView());
+    return data;
   }
 
   public List<Map<String, Object>> getPlans() {
@@ -219,6 +310,16 @@ public class MembershipService {
     return data;
   }
 
+  private int resolveAdRewardCredits(String userId, Instant now) {
+    if (!properties.getMembership().getAdReward().isEnabled()) {
+      return 0;
+    }
+    return userUsageQuotaRepository
+        .findByUserIdAndQuotaType(userId, buildAdRewardQuotaType())
+        .map(quota -> Math.max(quota.usedCount(), 0))
+        .orElse(0);
+  }
+
   private UserEntitlementSnapshot buildSnapshot(String userId, Instant now) {
     String totalQuotaType = buildTotalTrialQuotaType();
     int totalLimit = resolveTrialLimit();
@@ -303,6 +404,16 @@ public class MembershipService {
   private String buildDailyTrialQuotaType(Instant now) {
     LocalDate localDate = LocalDate.ofInstant(now, resolveQuotaZoneId());
     return "ESSAY_DAY_" + localDate;
+  }
+
+  private String buildAdRewardQuotaType() {
+    return "AD_REWARD_CREDITS";
+  }
+
+  private String buildAdRewardDailyKey(String deviceId, String clientIp, Instant now) {
+    String subject = !TextUtils.isBlank(deviceId) ? deviceId : (!TextUtils.isBlank(clientIp) ? clientIp : "anon");
+    String date = LocalDate.ofInstant(now, resolveQuotaZoneId()).toString();
+    return "ad-reward-day:" + date + ":" + TextUtils.sha256(subject).substring(0, 32);
   }
 
   private int resolveTrialLimit() {

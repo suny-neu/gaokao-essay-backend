@@ -80,6 +80,12 @@ gaokao:
     ip-daily-limit: ${GAOKAO_IP_DAILY_LIMIT:20}
     quota-zone-id: ${GAOKAO_QUOTA_ZONE_ID:Asia/Shanghai}
     allow-debug-subscription-activate: ${GAOKAO_BILLING_DEBUG_ENABLED:true}
+    ad-reward:
+      enabled: ${GAOKAO_AD_REWARD_ENABLED:true}
+      grant-per-view: ${GAOKAO_AD_REWARD_GRANT_PER_VIEW:1}
+      daily-max: ${GAOKAO_AD_REWARD_DAILY_MAX:10}
+      cooldown-seconds: ${GAOKAO_AD_REWARD_COOLDOWN_SECONDS:30}
+      max-credits: ${GAOKAO_AD_REWARD_MAX_CREDITS:50}
     monthly:
       code: monthly
       name: 包月会员

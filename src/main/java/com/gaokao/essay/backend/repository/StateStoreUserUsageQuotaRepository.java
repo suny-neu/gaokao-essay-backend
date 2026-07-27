@@ -71,6 +71,43 @@ public class StateStoreUserUsageQuotaRepository implements UserUsageQuotaReposit
     });
   }
 
+  @Override
+  public void grantCredits(String userId, String quotaType, int amount, int maxCredits) {
+    int safeAmount = Math.max(amount, 0);
+    int safeMax = Math.max(maxCredits, 1);
+    stateStore.write(state -> {
+      String key = key(userId, quotaType);
+      AppState.UsageQuotaState quota = state.usageQuotas.get(key);
+      if (quota == null) {
+        quota = new AppState.UsageQuotaState();
+        quota.userId = userId;
+        quota.quotaType = quotaType;
+        quota.usedCount = Math.min(safeAmount, safeMax);
+        quota.limitCount = safeMax;
+        quota.updatedAt = TextUtils.formatInstant(Instant.now());
+        state.usageQuotas.put(key, quota);
+      } else {
+        quota.usedCount = Math.min(quota.usedCount + safeAmount, safeMax);
+        quota.limitCount = safeMax;
+        quota.updatedAt = TextUtils.formatInstant(Instant.now());
+      }
+      return null;
+    });
+  }
+
+  @Override
+  public boolean consumeCredit(String userId, String quotaType) {
+    return stateStore.write(state -> {
+      AppState.UsageQuotaState quota = state.usageQuotas.get(key(userId, quotaType));
+      if (quota == null || quota.usedCount <= 0) {
+        return false;
+      }
+      quota.usedCount -= 1;
+      quota.updatedAt = TextUtils.formatInstant(Instant.now());
+      return true;
+    });
+  }
+
   private String key(String userId, String quotaType) {
     return userId + "::" + quotaType;
   }

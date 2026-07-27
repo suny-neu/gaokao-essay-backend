@@ -75,6 +75,71 @@ public class JdbcUserUsageQuotaRepository implements UserUsageQuotaRepository {
     );
   }
 
+  @Override
+  public void grantCredits(String userId, String quotaType, int amount, int maxCredits) {
+    int safeAmount = Math.max(amount, 0);
+    int safeMax = Math.max(maxCredits, 1);
+    int updatedRows = jdbcTemplate.update(
+        """
+        UPDATE user_usage_quota
+        SET used_count = LEAST(used_count + ?, ?),
+            limit_count = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND quota_type = ?
+        """,
+        safeAmount,
+        safeMax,
+        safeMax,
+        userId,
+        quotaType
+    );
+    if (updatedRows == 0) {
+      try {
+        jdbcTemplate.update(
+            """
+            INSERT INTO user_usage_quota (user_id, quota_type, used_count, limit_count, updated_at)
+            VALUES (?, ?, LEAST(?, ?), ?, CURRENT_TIMESTAMP)
+            """,
+            userId,
+            quotaType,
+            safeAmount,
+            safeMax,
+            safeMax
+        );
+      } catch (DuplicateKeyException ignored) {
+        jdbcTemplate.update(
+            """
+            UPDATE user_usage_quota
+            SET used_count = LEAST(used_count + ?, ?),
+                limit_count = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND quota_type = ?
+            """,
+            safeAmount,
+            safeMax,
+            safeMax,
+            userId,
+            quotaType
+        );
+      }
+    }
+  }
+
+  @Override
+  public boolean consumeCredit(String userId, String quotaType) {
+    int updatedRows = jdbcTemplate.update(
+        """
+        UPDATE user_usage_quota
+        SET used_count = used_count - 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND quota_type = ? AND used_count > 0
+        """,
+        userId,
+        quotaType
+    );
+    return updatedRows > 0;
+  }
+
   private boolean tryUpdateExistingQuota(String userId, String quotaType, int limitCount) {
     int updatedRows = jdbcTemplate.update(
         """

@@ -563,6 +563,7 @@ public class GaokaoProperties {
     private int ipDailyLimit = 20;
     private String quotaZoneId = "Asia/Shanghai";
     private boolean allowDebugSubscriptionActivate = true;
+    private final AdReward adReward = new AdReward();
     private final Plan monthly = new Plan("monthly", "包月会员", "30 天不限次作文生成与严格批改", 30, 3900, false);
     private final Plan yearly = new Plan("yearly", "包年会员", "365 天不限次，更适合长期备考", 365, 29900, true);
 
@@ -620,6 +621,58 @@ public class GaokaoProperties {
 
     public Plan getYearly() {
       return yearly;
+    }
+
+    public AdReward getAdReward() {
+      return adReward;
+    }
+  }
+
+  public static class AdReward {
+    private boolean enabled = true;
+    private int grantPerView = 1;
+    private int dailyMax = 10;
+    private int cooldownSeconds = 30;
+    private int maxCredits = 50;
+
+    public boolean isEnabled() {
+      return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+      this.enabled = enabled;
+    }
+
+    public int getGrantPerView() {
+      return Math.max(grantPerView, 1);
+    }
+
+    public void setGrantPerView(int grantPerView) {
+      this.grantPerView = grantPerView;
+    }
+
+    public int getDailyMax() {
+      return Math.max(dailyMax, 0);
+    }
+
+    public void setDailyMax(int dailyMax) {
+      this.dailyMax = dailyMax;
+    }
+
+    public int getCooldownSeconds() {
+      return Math.max(cooldownSeconds, 0);
+    }
+
+    public void setCooldownSeconds(int cooldownSeconds) {
+      this.cooldownSeconds = cooldownSeconds;
+    }
+
+    public int getMaxCredits() {
+      return Math.max(maxCredits, 1);
+    }
+
+    public void setMaxCredits(int maxCredits) {
+      this.maxCredits = maxCredits;
     }
   }
 

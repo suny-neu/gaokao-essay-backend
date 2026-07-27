@@ -10,4 +10,8 @@ public interface UserUsageQuotaRepository {
   boolean tryConsume(String userId, String quotaType, int limitCount);
 
   void release(String userId, String quotaType);
+
+  void grantCredits(String userId, String quotaType, int amount, int maxCredits);
+
+  boolean consumeCredit(String userId, String quotaType);
 }
