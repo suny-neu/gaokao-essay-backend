@@ -117,6 +117,26 @@ class MembershipServiceTrialLimitTest {
       ));
     }
 
+    @Override
+    public void grantCredits(String userId, String quotaType, int amount, int maxCredits) {
+      String key = key(userId, quotaType);
+      UserUsageQuota current = store.get(key);
+      int existing = current == null ? 0 : current.usedCount();
+      int granted = Math.min(existing + amount, maxCredits);
+      store.put(key, new UserUsageQuota(userId, quotaType, granted, maxCredits, Instant.now()));
+    }
+
+    @Override
+    public boolean consumeCredit(String userId, String quotaType) {
+      String key = key(userId, quotaType);
+      UserUsageQuota current = store.get(key);
+      if (current == null || current.usedCount() <= 0) {
+        return false;
+      }
+      store.put(key, new UserUsageQuota(userId, quotaType, current.usedCount() - 1, current.limitCount(), Instant.now()));
+      return true;
+    }
+
     private String key(String userId, String quotaType) {
       return userId + "::" + quotaType;
     }
