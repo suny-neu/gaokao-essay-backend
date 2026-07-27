@@ -8,16 +8,20 @@ import com.gaokao.essay.backend.model.UserSubscription;
 import com.gaokao.essay.backend.model.UserUsageQuota;
 import com.gaokao.essay.backend.repository.UserSubscriptionRepository;
 import com.gaokao.essay.backend.repository.UserUsageQuotaRepository;
+import com.gaokao.essay.backend.security.AbuseProtectionStore;
 import com.gaokao.essay.backend.util.TextUtils;
 import java.time.Instant;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -27,19 +31,39 @@ public class MembershipService {
   private final GaokaoProperties properties;
   private final UserUsageQuotaRepository userUsageQuotaRepository;
   private final UserSubscriptionRepository userSubscriptionRepository;
+  private final Clock clock;
+  private final AbuseProtectionStore abuseProtectionStore;
 
+  @Autowired
   public MembershipService(
       GaokaoProperties properties,
       UserUsageQuotaRepository userUsageQuotaRepository,
-      UserSubscriptionRepository userSubscriptionRepository
+      UserSubscriptionRepository userSubscriptionRepository,
+      AbuseProtectionStore abuseProtectionStore
+  ) {
+    this(properties, userUsageQuotaRepository, userSubscriptionRepository, abuseProtectionStore, Clock.systemUTC());
+  }
+
+  MembershipService(
+      GaokaoProperties properties,
+      UserUsageQuotaRepository userUsageQuotaRepository,
+      UserSubscriptionRepository userSubscriptionRepository,
+      AbuseProtectionStore abuseProtectionStore,
+      Clock clock
   ) {
     this.properties = properties;
     this.userUsageQuotaRepository = userUsageQuotaRepository;
     this.userSubscriptionRepository = userSubscriptionRepository;
+    this.abuseProtectionStore = abuseProtectionStore;
+    this.clock = clock;
   }
 
   public UsageReservation reserveEssayAccess(AuthenticatedUser user) {
-    Instant now = Instant.now();
+    return reserveEssayAccess(user, "", "");
+  }
+
+  public UsageReservation reserveEssayAccess(AuthenticatedUser user, String deviceId, String clientIp) {
+    Instant now = clock.instant();
     Optional<UserSubscription> subscription = userSubscriptionRepository.findByUserId(user.userId());
     if (subscription.filter(item -> item.isActiveAt(now)).isPresent()) {
       return UsageReservation.subscription(user.userId());
@@ -56,7 +80,33 @@ public class MembershipService {
       throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TRIAL_DAILY_LIMIT_REACHED", "今日免费体验次数已用完，请明天再试或开通会员继续使用");
     }
 
-    return UsageReservation.trial(user.userId(), consumedQuotaTypes);
+    List<String> abuseKeys = new ArrayList<>();
+    try {
+      consumeExternalDailyQuota(
+          "device-day",
+          deviceId,
+          properties.getMembership().getDeviceDailyLimit(),
+          "DEVICE_DAILY_LIMIT_REACHED",
+          "当前设备今日免费次数已用完",
+          abuseKeys,
+          now
+      );
+      consumeExternalDailyQuota(
+          "ip-day",
+          clientIp,
+          properties.getMembership().getIpDailyLimit(),
+          "IP_DAILY_LIMIT_REACHED",
+          "当前网络今日免费次数已用完",
+          abuseKeys,
+          now
+      );
+    } catch (RuntimeException error) {
+      rollbackConsumedQuotas(user.userId(), consumedQuotaTypes);
+      rollbackAbuseKeys(abuseKeys);
+      throw error;
+    }
+
+    return UsageReservation.trial(user.userId(), consumedQuotaTypes, abuseKeys);
   }
 
   public void releaseReservation(UsageReservation reservation) {
@@ -64,10 +114,11 @@ public class MembershipService {
       return;
     }
     rollbackConsumedQuotas(reservation.userId(), reservation.quotaTypes());
+    rollbackAbuseKeys(reservation.abuseKeys());
   }
 
   public Map<String, Object> getEntitlement(AuthenticatedUser user) {
-    return toMap(buildSnapshot(user.userId(), Instant.now()));
+    return toMap(buildSnapshot(user.userId(), clock.instant()));
   }
 
   public List<Map<String, Object>> getPlans() {
@@ -87,7 +138,7 @@ public class MembershipService {
     }
 
     GaokaoProperties.Plan plan = resolvePlan(planCode);
-    Instant now = Instant.now();
+    Instant now = clock.instant();
     UserSubscription subscription = new UserSubscription(
         user.userId(),
         plan.getCode(),
@@ -279,6 +330,31 @@ public class MembershipService {
     }
   }
 
+  private void consumeExternalDailyQuota(
+      String scope,
+      String subject,
+      int limit,
+      String errorCode,
+      String message,
+      List<String> consumedKeys,
+      Instant now
+  ) {
+    if (TextUtils.isBlank(subject) || limit <= 0) {
+      return;
+    }
+    String date = LocalDate.ofInstant(now, resolveQuotaZoneId()).toString();
+    String key = scope + ":" + date + ":" + TextUtils.sha256(subject).substring(0, 32);
+    Duration ttl = Duration.between(now, nextQuotaResetAt(now));
+    if (!abuseProtectionStore.tryConsume(key, limit, ttl)) {
+      throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, errorCode, message);
+    }
+    consumedKeys.add(key);
+  }
+
+  private void rollbackAbuseKeys(List<String> keys) {
+    keys.forEach(abuseProtectionStore::release);
+  }
+
   private Instant nextQuotaResetAt(Instant now) {
     return LocalDate.ofInstant(now, resolveQuotaZoneId())
         .plusDays(1)
@@ -289,14 +365,19 @@ public class MembershipService {
   public record UsageReservation(
       String userId,
       List<String> quotaTypes,
+      List<String> abuseKeys,
       boolean countedTrial
   ) {
     public static UsageReservation subscription(String userId) {
-      return new UsageReservation(userId, List.of(), false);
+      return new UsageReservation(userId, List.of(), List.of(), false);
     }
 
     public static UsageReservation trial(String userId, List<String> quotaTypes) {
-      return new UsageReservation(userId, List.copyOf(quotaTypes), true);
+      return trial(userId, quotaTypes, List.of());
+    }
+
+    public static UsageReservation trial(String userId, List<String> quotaTypes, List<String> abuseKeys) {
+      return new UsageReservation(userId, List.copyOf(quotaTypes), List.copyOf(abuseKeys), true);
     }
   }
 }

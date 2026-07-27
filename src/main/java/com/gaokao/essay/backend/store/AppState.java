@@ -116,8 +116,16 @@ public class AppState {
     public String overallComment = "";
     public String secondDraftGuidance = "";
     public String improvedEssay = "";
+    public List<ScoreDimension> scoreDimensions = new ArrayList<>();
     public List<SentenceDiagnosis> sentenceDiagnostics = new ArrayList<>();
     public WeaknessProfile weaknessProfile = null;
+  }
+
+  public static class ScoreDimension {
+    public String code = "";
+    public String label = "";
+    public double score = 0.0;
+    public double maxScore = 0.0;
   }
 
   public static class SentenceDiagnosis {

@@ -44,6 +44,15 @@ public class EssayService {
   }
 
   public EssayExecution execute(AuthenticatedUser user, EssayTaskRequest request) {
+    return execute(user, request, "", "");
+  }
+
+  public EssayExecution execute(
+      AuthenticatedUser user,
+      EssayTaskRequest request,
+      String deviceId,
+      String clientIp
+  ) {
     validateRequest(request);
     contentSafetyService.verifyUserInput(user.openId(), request);
     AppState.EssayRecord pendingRecord = buildPendingRecord(user, request);
@@ -53,9 +62,13 @@ public class EssayService {
     }
 
     MembershipService.UsageReservation reservation = null;
+    boolean upstreamCallStarted = false;
     try {
-      reservation = membershipService.reserveEssayAccess(user);
+      reservation = TextUtils.isBlank(deviceId) && TextUtils.isBlank(clientIp)
+          ? membershipService.reserveEssayAccess(user)
+          : membershipService.reserveEssayAccess(user, deviceId, clientIp);
       CoachKnowledgeBaseService.CoachGuidance coachGuidance = coachKnowledgeBaseService.prepareKnowledge(request);
+      upstreamCallStarted = true;
       String rawResponse = aiGatewayService.requestJsonText(
           buildSystemPrompt(request, coachGuidance),
           buildUserPrompt(request, coachGuidance)
@@ -74,7 +87,7 @@ public class EssayService {
       String streamText = resolveStreamText(claimedRecord);
       return new EssayExecution(claimedRecord, streamText);
     } catch (RuntimeException error) {
-      if (reservation != null) {
+      if (reservation != null && !upstreamCallStarted) {
         membershipService.releaseReservation(reservation);
       }
       markFailedRecord(claimedRecord);
@@ -250,6 +263,10 @@ public class EssayService {
     analysis.overallComment = analysisNode.path("overallComment").asText("");
     analysis.secondDraftGuidance = analysisNode.path("secondDraftGuidance").asText("");
     analysis.improvedEssay = analysisNode.path("improvedEssay").asText("");
+    analysis.scoreDimensions = GradeScoreDimensions.parse(
+        analysisNode.path("scoreDimensions"),
+        parseScoreValue(root.path("scoreText").asText(""))
+    );
     analysis.sentenceDiagnostics = readSentenceDiagnostics(analysisNode.path("sentenceDiagnostics"));
     if (analysisNode.has("weaknessProfile")) {
       AppState.WeaknessProfile profile = new AppState.WeaknessProfile();
@@ -274,6 +291,13 @@ public class EssayService {
         !TextUtils.isBlank(analysis.improvedEssay) ? analysis.improvedEssay : record.content
     ));
     record.scoreText = root.path("scoreText").asText("");
+  }
+
+  private double parseScoreValue(String scoreText) {
+    java.util.regex.Matcher matcher = java.util.regex.Pattern
+        .compile("(\\d+(?:\\.\\d+)?)\\s*(?:分)?\\s*/")
+        .matcher(TextUtils.trimToEmpty(scoreText));
+    return matcher.find() ? Double.parseDouble(matcher.group(1)) : Double.NaN;
   }
 
   private JsonNode parseJsonNode(String rawResponse) {
@@ -379,9 +403,14 @@ public class EssayService {
         + "\"languageFitnessDiagnosis\":\"...\",\"languageDiagnosis\":\"...\",\"flowDiagnosis\":\"...\","
         + "\"highlightDiagnosis\":\"...\",\"lossPointDiagnosis\":\"...\",\"overallComment\":\"...\","
         + "\"sentenceDiagnostics\":[{\"original\":\"...\",\"diagnosis\":\"...\",\"revision\":\"...\"}],"
+        + "\"scoreDimensions\":[{\"code\":\"content\",\"label\":\"内容\",\"score\":4,\"maxScore\":5},"
+        + "{\"code\":\"language\",\"label\":\"语言\",\"score\":4,\"maxScore\":5},"
+        + "{\"code\":\"structure\",\"label\":\"结构\",\"score\":2,\"maxScore\":3},"
+        + "{\"code\":\"vocabulary\",\"label\":\"词汇\",\"score\":1,\"maxScore\":2}],"
         + "\"secondDraftGuidance\":\"...\",\"improvedEssay\":\"英文提分稿\",\"weaknessProfile\":{\"headline\":\"...\","
         + "\"nextFocus\":\"...\",\"sampleSize\":1,\"tags\":[{\"code\":\"show\",\"label\":\"Show 不足\",\"hitCount\":1}]}}}");
     lines.add("如果原始输出缺少某些槽位，请根据原始内容和学生原文补齐，但不要另起炉灶。");
+    lines.add("scoreDimensions 固定为内容5分、语言5分、结构3分、词汇2分，四项 score 之和必须与 scoreText 总分完全一致。");
     lines.add("原始输出：\n" + rawResponse);
     return String.join("\n\n", lines);
   }
@@ -679,8 +708,13 @@ public class EssayService {
         + "\"contentDiagnosis\":\"...\",\"structureDiagnosis\":\"...\",\"languageFitnessDiagnosis\":\"...\","
         + "\"languageDiagnosis\":\"...\",\"flowDiagnosis\":\"...\",\"highlightDiagnosis\":\"...\",\"lossPointDiagnosis\":\"...\","
         + "\"overallComment\":\"...\",\"sentenceDiagnostics\":[{\"original\":\"...\",\"diagnosis\":\"...\",\"revision\":\"...\"}],"
+        + "\"scoreDimensions\":[{\"code\":\"content\",\"label\":\"内容\",\"score\":4,\"maxScore\":5},"
+        + "{\"code\":\"language\",\"label\":\"语言\",\"score\":4,\"maxScore\":5},"
+        + "{\"code\":\"structure\",\"label\":\"结构\",\"score\":2,\"maxScore\":3},"
+        + "{\"code\":\"vocabulary\",\"label\":\"词汇\",\"score\":1,\"maxScore\":2}],"
         + "\"secondDraftGuidance\":\"...\",\"improvedEssay\":\"英文提分稿\",\"weaknessProfile\":{"
-        + "\"headline\":\"...\",\"nextFocus\":\"...\",\"sampleSize\":1,\"tags\":[{\"code\":\"show\",\"label\":\"Show 不足\",\"hitCount\":1}]}}}";
+        + "\"headline\":\"...\",\"nextFocus\":\"...\",\"sampleSize\":1,\"tags\":[{\"code\":\"show\",\"label\":\"Show 不足\",\"hitCount\":1}]}}}"
+        + "。scoreDimensions 固定为内容5分、语言5分、结构3分、词汇2分，四项 score 之和必须与 scoreText 总分完全一致。";
   }
 
   private String buildUserPrompt(

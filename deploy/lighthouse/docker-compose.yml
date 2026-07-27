@@ -1,15 +1,35 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    expose:
+      - "6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   backend:
     build:
       context: ../..
       dockerfile: Dockerfile
     image: ${BACKEND_IMAGE_NAME:-gaokao-essay-backend}:latest
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     env_file:
       - ./.env
     environment:
       SPRING_PROFILES_ACTIVE: release
       GAOKAO_STATE_FILE: /app/data/runtime-state.json
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      GAOKAO_REDIS_REQUIRED: "true"
     expose:
       - "8080"
     ports:
@@ -34,3 +54,4 @@ services:
 
 volumes:
   backend-data:
+  redis-data:

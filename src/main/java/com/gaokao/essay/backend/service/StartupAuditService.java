@@ -2,6 +2,7 @@ package com.gaokao.essay.backend.service;
 
 import com.gaokao.essay.backend.config.GaokaoProperties;
 import com.gaokao.essay.backend.util.TextUtils;
+import com.gaokao.essay.backend.security.AbuseProtectionStore;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -23,6 +24,7 @@ public class StartupAuditService implements ApplicationRunner {
   private final OcrService ocrService;
   private final WechatService wechatService;
   private final WechatPayService wechatPayService;
+  private final AbuseProtectionStore abuseProtectionStore;
   private volatile List<String> lastIssues = List.of();
 
   public StartupAuditService(
@@ -30,13 +32,15 @@ public class StartupAuditService implements ApplicationRunner {
       AiGatewayService aiGatewayService,
       OcrService ocrService,
       WechatService wechatService,
-      WechatPayService wechatPayService
+      WechatPayService wechatPayService,
+      AbuseProtectionStore abuseProtectionStore
   ) {
     this.properties = properties;
     this.aiGatewayService = aiGatewayService;
     this.ocrService = ocrService;
     this.wechatService = wechatService;
     this.wechatPayService = wechatPayService;
+    this.abuseProtectionStore = abuseProtectionStore;
   }
 
   @Override
@@ -73,6 +77,7 @@ public class StartupAuditService implements ApplicationRunner {
     capabilities.put("storageMode", properties.getStorage().getDatabase().isEnabled() ? properties.getStorage().getDatabase().resolveKind() : "state-file");
     capabilities.put("authMode", "jwt");
     capabilities.put("debugSubscriptionEnabled", properties.getMembership().isAllowDebugSubscriptionActivate());
+    capabilities.put("persistentAbuseProtection", abuseProtectionStore.isPersistent());
     capabilities.put("paymentEnabled", properties.getPayment().isEnabled());
     capabilities.put("paymentMode", properties.getPayment().isEnabled()
         ? (wechatPayService.isReady() ? "live" : "configured-but-unready")
@@ -97,6 +102,20 @@ public class StartupAuditService implements ApplicationRunner {
     }
     if (!properties.getSecurity().isRateLimitEnabled()) {
       issues.add("Sensitive APIs are still missing request rate limiting.");
+    }
+    if (!properties.getSecurity().isChallengeEnabled()) {
+      issues.add("One-time challenge protection is disabled.");
+    }
+    if (!properties.getWechat().isStrictCode2Session()) {
+      issues.add("Strict WeChat code2session verification is disabled.");
+    }
+    if (properties.getSecurity().isRedisRequired() && !abuseProtectionStore.isPersistent()) {
+      issues.add("Release runtime requires persistent Redis abuse protection.");
+    }
+    if (properties.getMembership().getTrialDailyLimit() <= 0
+        || properties.getMembership().getDeviceDailyLimit() <= 0
+        || properties.getMembership().getIpDailyLimit() <= 0) {
+      issues.add("Daily account, device and IP abuse limits must all be greater than zero.");
     }
     if ((properties.getSecurity().isMsgSecEnabled() || properties.getWechat().isStrictCode2Session()) && !wechatService.hasCode2SessionConfig()) {
       issues.add("WeChat app-id / app-secret has not been configured.");

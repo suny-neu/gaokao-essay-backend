@@ -50,6 +50,7 @@ gaokao:
     ocr-per-minute: ${GAOKAO_OCR_PER_MINUTE:5}
     max-upload-bytes: ${GAOKAO_MAX_UPLOAD_BYTES:5242880}
     challenge-enabled: ${GAOKAO_CHALLENGE_ENABLED:true}
+    redis-required: ${GAOKAO_REDIS_REQUIRED:false}
     challenge-ttl-seconds: ${GAOKAO_CHALLENGE_TTL_SECONDS:60}
     challenge-per-minute: ${GAOKAO_CHALLENGE_PER_MINUTE:10}
   ai:
@@ -74,6 +75,9 @@ gaokao:
     tencent-language-type: ${GAOKAO_OCR_TENCENT_LANGUAGE_TYPE:zh}
   membership:
     trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:${GAOKAO_TRIAL_DAILY_LIMIT:5}}
+    trial-daily-limit: ${GAOKAO_TRIAL_DAILY_LIMIT:2}
+    device-daily-limit: ${GAOKAO_DEVICE_DAILY_LIMIT:4}
+    ip-daily-limit: ${GAOKAO_IP_DAILY_LIMIT:20}
     quota-zone-id: ${GAOKAO_QUOTA_ZONE_ID:Asia/Shanghai}
     allow-debug-subscription-activate: ${GAOKAO_BILLING_DEBUG_ENABLED:true}
     monthly:
@@ -121,6 +125,7 @@ gaokao:
     strict-startup-checks: true
   security:
     msg-sec-enabled: true
+    redis-required: true
   wechat:
     strict-code2-session: true
   membership:

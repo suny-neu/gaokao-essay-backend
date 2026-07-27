@@ -81,12 +81,19 @@ public class EssayController {
       HttpServletRequest servletRequest,
       @Valid @RequestBody EssayTaskRequest request,
       @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-      @RequestHeader(value = "X-Challenge", required = false) String challengeHeader
+      @RequestHeader(value = "X-Challenge", required = false) String challengeHeader,
+      @RequestHeader(value = "X-Device-ID", required = false) String deviceId
   ) {
     LoginSession loginSession = resolveLoginSession(servletRequest, authorizationHeader, request.getOpenId(), request.getWxCode());
-    requestSecurityService.checkEssaySubmission(servletRequest, loginSession.user().userId());
+    String normalizedDeviceId = requestSecurityService.requireDeviceId(deviceId);
+    requestSecurityService.checkEssaySubmission(servletRequest, loginSession.user().userId(), normalizedDeviceId);
     challengeService.consumeChallenge(challengeHeader, loginSession.user().userId());
-    EssayService.EssayExecution execution = essayService.execute(loginSession.user(), request);
+    EssayService.EssayExecution execution = essayService.execute(
+        loginSession.user(),
+        request,
+        normalizedDeviceId,
+        RequestSecurityService.resolveClientIpStatic(servletRequest)
+    );
 
     StreamingResponseBody stream = outputStream -> {
       writeEvent(outputStream, "status", "已通过身份校验，正在整理题面...");

@@ -10,6 +10,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.DefaultApplicationArguments;
+import com.gaokao.essay.backend.security.InMemoryAbuseProtectionStore;
 
 class StartupAuditServiceTest {
 
@@ -24,7 +25,8 @@ class StartupAuditServiceTest {
         readyAiGatewayService(),
         disabledOcrService(),
         readyWechatService(),
-        readyWechatPayService()
+        readyWechatPayService(),
+        new InMemoryAbuseProtectionStore()
     );
 
     IllegalStateException error = assertThrows(IllegalStateException.class,
@@ -48,7 +50,8 @@ class StartupAuditServiceTest {
         readyAiGatewayService(),
         ocrService,
         readyWechatService(),
-        readyWechatPayService()
+        readyWechatPayService(),
+        new InMemoryAbuseProtectionStore()
     );
 
     service.run(new DefaultApplicationArguments(new String[0]));
@@ -67,8 +70,12 @@ class StartupAuditServiceTest {
     properties.getStorage().getDatabase().setUrl("jdbc:postgresql://db.example.com:5432/postgres");
     properties.getStorage().getDatabase().setUsername("postgres");
     properties.getSecurity().setMsgSecEnabled(true);
+    properties.getWechat().setStrictCode2Session(true);
     properties.getKnowledge().setEnabled(true);
     properties.getMembership().setAllowDebugSubscriptionActivate(false);
+    properties.getMembership().setTrialDailyLimit(2);
+    properties.getMembership().setDeviceDailyLimit(4);
+    properties.getMembership().setIpDailyLimit(20);
     return properties;
   }
 

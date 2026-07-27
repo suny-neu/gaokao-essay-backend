@@ -279,6 +279,7 @@ public class GaokaoProperties {
     private int ocrPerMinute = 5;
     private long maxUploadBytes = 5L * 1024L * 1024L;
     private boolean challengeEnabled = true;
+    private boolean redisRequired;
     private long challengeTtlSeconds = 60L;
     private int challengePerMinute = 10;
 
@@ -356,6 +357,14 @@ public class GaokaoProperties {
 
     public boolean isChallengeEnabled() {
       return challengeEnabled;
+    }
+
+    public boolean isRedisRequired() {
+      return redisRequired;
+    }
+
+    public void setRedisRequired(boolean redisRequired) {
+      this.redisRequired = redisRequired;
     }
 
     public void setChallengeEnabled(boolean challengeEnabled) {
@@ -550,6 +559,8 @@ public class GaokaoProperties {
   public static class Membership {
     private int trialTotalLimit = 5;
     private int trialDailyLimit;
+    private int deviceDailyLimit = 4;
+    private int ipDailyLimit = 20;
     private String quotaZoneId = "Asia/Shanghai";
     private boolean allowDebugSubscriptionActivate = true;
     private final Plan monthly = new Plan("monthly", "包月会员", "30 天不限次作文生成与严格批改", 30, 3900, false);
@@ -569,6 +580,22 @@ public class GaokaoProperties {
 
     public void setTrialDailyLimit(int trialDailyLimit) {
       this.trialDailyLimit = trialDailyLimit;
+    }
+
+    public int getDeviceDailyLimit() {
+      return deviceDailyLimit;
+    }
+
+    public void setDeviceDailyLimit(int deviceDailyLimit) {
+      this.deviceDailyLimit = deviceDailyLimit;
+    }
+
+    public int getIpDailyLimit() {
+      return ipDailyLimit;
+    }
+
+    public void setIpDailyLimit(int ipDailyLimit) {
+      this.ipDailyLimit = ipDailyLimit;
     }
 
     public String getQuotaZoneId() {

@@ -2,14 +2,13 @@ package com.gaokao.essay.backend.service;
 
 import com.gaokao.essay.backend.config.GaokaoProperties;
 import com.gaokao.essay.backend.model.ApiException;
+import com.gaokao.essay.backend.security.AbuseProtectionStore;
 import com.gaokao.essay.backend.util.TextUtils;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.time.Instant;
+import java.time.Duration;
 import java.util.Base64;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -28,10 +27,11 @@ public class ChallengeService {
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   private final GaokaoProperties properties;
-  private final Map<String, ChallengeEntry> activeChallenges = new ConcurrentHashMap<>();
+  private final AbuseProtectionStore store;
 
-  public ChallengeService(GaokaoProperties properties) {
+  public ChallengeService(GaokaoProperties properties, AbuseProtectionStore store) {
     this.properties = properties;
+    this.store = store;
   }
 
   public long getChallengeTtlSeconds() {
@@ -50,9 +50,7 @@ public class ChallengeService {
     }
 
     String subject = TextUtils.isBlank(userId) ? "anonymous" : userId;
-    long now = Instant.now().getEpochSecond();
     long ttl = properties.getSecurity().getChallengeTtlSeconds();
-    long expiresAt = now + ttl;
 
     // 生成随机 nonce（16 字节）
     byte[] nonceBytes = new byte[16];
@@ -60,19 +58,8 @@ public class ChallengeService {
     String nonce = URL_ENCODER.encodeToString(nonceBytes);
 
     // 生成签名：HMAC-SHA256(authTokenSecret, subject + ":" + nonce + ":" + expiresAt)
-    String signingInput = subject + ":" + nonce + ":" + expiresAt;
-    String signature = sha256Hex(signingInput);
-
-    // Token 格式：nonce.expiresAt.signature
-    String token = nonce + "." + expiresAt + "." + signature;
-
-    activeChallenges.put(token, new ChallengeEntry(subject, expiresAt));
-
-    // 清理过期 challenge（惰性清理，避免每次都全量扫描）
-    if (activeChallenges.size() > 5000) {
-      activeChallenges.entrySet().removeIf(entry -> entry.getValue().expiresAtEpochSecond < now);
-    }
-
+    String token = nonce + "." + URL_ENCODER.encodeToString(new byte[8]);
+    store.putChallenge(hash(token), hash(subject), Duration.ofSeconds(Math.max(ttl, 1)));
     return token;
   }
 
@@ -97,65 +84,15 @@ public class ChallengeService {
 
     String expectedSubject = TextUtils.isBlank(expectedUserId) ? "anonymous" : expectedUserId;
 
-    // 解析 token
-    String[] parts = token.split("\\.");
-    if (parts.length != 3) {
-      throw new ApiException(
-          HttpStatus.FORBIDDEN, "CHALLENGE_INVALID",
-          "验证令牌格式不合法"
-      );
-    }
-
-    String nonce = parts[0];
-    long expiresAt;
-    try {
-      expiresAt = Long.parseLong(parts[1]);
-    } catch (NumberFormatException e) {
-      throw new ApiException(
-          HttpStatus.FORBIDDEN, "CHALLENGE_INVALID",
-          "验证令牌格式不合法"
-      );
-    }
-    String signature = parts[2];
-
-    // 验证签名
-    String signingInput = expectedSubject + ":" + nonce + ":" + expiresAt;
-    String expectedSignature = sha256Hex(signingInput);
-    if (!expectedSignature.equals(signature)) {
-      throw new ApiException(
-          HttpStatus.FORBIDDEN, "CHALLENGE_INVALID",
-          "验证令牌校验失败"
-      );
-    }
-
-    // 验证未过期
-    long now = Instant.now().getEpochSecond();
-    if (now > expiresAt) {
-      throw new ApiException(
-          HttpStatus.FORBIDDEN, "CHALLENGE_EXPIRED",
-          "验证令牌已过期，请刷新后重试"
-      );
-    }
-
-    // 验证未被使用过（一次性消费）
-    ChallengeEntry entry = activeChallenges.remove(token);
-    if (entry == null) {
+    if (!store.consumeChallenge(hash(token), hash(expectedSubject))) {
       throw new ApiException(
           HttpStatus.FORBIDDEN, "CHALLENGE_ALREADY_USED",
-          "验证令牌已使用或不存在，请重新获取"
-      );
-    }
-
-    // 验证用户匹配
-    if (!expectedSubject.equals(entry.subject)) {
-      throw new ApiException(
-          HttpStatus.FORBIDDEN, "CHALLENGE_MISMATCH",
-          "验证令牌与当前用户不匹配"
+          "验证令牌已过期、已使用或与当前用户不匹配，请重新获取"
       );
     }
   }
 
-  private String sha256Hex(String input) {
+  private String hash(String input) {
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
       byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
@@ -169,13 +106,4 @@ public class ChallengeService {
     }
   }
 
-  private static final class ChallengeEntry {
-    final String subject;
-    final long expiresAtEpochSecond;
-
-    ChallengeEntry(String subject, long expiresAtEpochSecond) {
-      this.subject = subject;
-      this.expiresAtEpochSecond = expiresAtEpochSecond;
-    }
-  }
 }

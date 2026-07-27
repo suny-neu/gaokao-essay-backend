@@ -2,9 +2,9 @@ package com.gaokao.essay.backend.service;
 
 import com.gaokao.essay.backend.config.GaokaoProperties;
 import com.gaokao.essay.backend.model.ApiException;
-import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.gaokao.essay.backend.security.AbuseProtectionStore;
+import com.gaokao.essay.backend.util.TextUtils;
+import java.time.Duration;
 import javax.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -13,10 +13,11 @@ import org.springframework.stereotype.Service;
 public class RequestSecurityService {
 
   private final GaokaoProperties properties;
-  private final Map<String, FixedWindowCounter> counters = new ConcurrentHashMap<>();
+  private final AbuseProtectionStore store;
 
-  public RequestSecurityService(GaokaoProperties properties) {
+  public RequestSecurityService(GaokaoProperties properties, AbuseProtectionStore store) {
     this.properties = properties;
+    this.store = store;
   }
 
   public void checkAuthAttempt(HttpServletRequest request) {
@@ -24,8 +25,14 @@ public class RequestSecurityService {
   }
 
   public void checkEssaySubmission(HttpServletRequest request, String userId) {
+    checkEssaySubmission(request, userId, "");
+  }
+
+  public void checkEssaySubmission(HttpServletRequest request, String userId, String deviceId) {
+    requireDeviceId(deviceId);
     checkByIp(request, "essay-ip", properties.getSecurity().getEssaySubmitPerMinute(), 60, "提交过于频繁，请稍后再试");
     checkByUser(userId, "essay-user", properties.getSecurity().getEssaySubmitPerMinute(), 60, "你的提交频率过高，请稍后再试");
+    check("essay-device", deviceId, properties.getSecurity().getEssaySubmitPerMinute(), 60, "当前设备提交过于频繁，请稍后再试");
   }
 
   public void checkHistoryRead(HttpServletRequest request, String userId) {
@@ -34,8 +41,14 @@ public class RequestSecurityService {
   }
 
   public void checkOcr(HttpServletRequest request, String userId) {
+    checkOcr(request, userId, "");
+  }
+
+  public void checkOcr(HttpServletRequest request, String userId, String deviceId) {
+    requireDeviceId(deviceId);
     checkByIp(request, "ocr-ip", properties.getSecurity().getOcrPerMinute(), 60, "OCR 请求过于频繁，请稍后再试");
     checkByUser(userId, "ocr-user", properties.getSecurity().getOcrPerMinute(), 60, "你的 OCR 请求过于频繁，请稍后再试");
+    check("ocr-device", deviceId, properties.getSecurity().getOcrPerMinute(), 60, "当前设备 OCR 请求过于频繁，请稍后再试");
   }
 
   public void checkChallengeAttempt(HttpServletRequest request) {
@@ -55,25 +68,18 @@ public class RequestSecurityService {
       return;
     }
 
-    long now = Instant.now().getEpochSecond();
-    long windowStart = now - (now % windowSeconds);
-    String key = scope + ":" + subject;
-
-    FixedWindowCounter counter = counters.compute(key, (ignored, current) -> {
-      if (current == null || current.windowStartEpochSecond != windowStart) {
-        return new FixedWindowCounter(windowStart, 1);
-      }
-      current.count += 1;
-      return current;
-    });
-
-    if (counter != null && counter.count > limit) {
+    String key = "rate:" + scope + ":" + TextUtils.sha256(subject).substring(0, 32);
+    if (!store.tryConsume(key, limit, Duration.ofSeconds(windowSeconds))) {
       throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED", message);
     }
+  }
 
-    if (counters.size() > 20000) {
-      counters.entrySet().removeIf((entry) -> entry.getValue().windowStartEpochSecond < windowStart - windowSeconds);
+  public String requireDeviceId(String deviceId) {
+    String normalized = TextUtils.trimToEmpty(deviceId);
+    if (!normalized.matches("[A-Za-z0-9_-]{16,128}")) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "DEVICE_ID_REQUIRED", "设备标识缺失或不合法，请重新进入小程序");
     }
+    return normalized;
   }
 
   private String resolveClientIp(HttpServletRequest request) {
@@ -104,13 +110,4 @@ public class RequestSecurityService {
     return value == null ? "" : value.trim();
   }
 
-  private static final class FixedWindowCounter {
-    private final long windowStartEpochSecond;
-    private int count;
-
-    private FixedWindowCounter(long windowStartEpochSecond, int count) {
-      this.windowStartEpochSecond = windowStartEpochSecond;
-      this.count = count;
-    }
-  }
 }

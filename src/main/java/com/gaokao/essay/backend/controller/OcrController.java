@@ -35,12 +35,13 @@ public class OcrController {
       HttpServletRequest request,
       @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
       @RequestHeader(value = "X-Challenge", required = false) String challengeHeader,
+      @RequestHeader(value = "X-Device-ID", required = false) String deviceId,
       @RequestParam("file") MultipartFile file,
       @RequestParam(value = "scene", required = false) String scene
   ) {
     String openId = sessionService.requireOpenId(authorizationHeader, null);
     String userId = sessionService.requireUser(request, authorizationHeader, null).userId();
-    requestSecurityService.checkOcr(request, userId);
+    requestSecurityService.checkOcr(request, userId, deviceId);
     challengeService.consumeChallenge(challengeHeader, userId);
     return ApiResponse.ok(ocrService.extractText(openId, file, scene));
   }

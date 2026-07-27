@@ -10,7 +10,10 @@ import com.gaokao.essay.backend.model.UserSubscription;
 import com.gaokao.essay.backend.model.UserUsageQuota;
 import com.gaokao.essay.backend.repository.UserSubscriptionRepository;
 import com.gaokao.essay.backend.repository.UserUsageQuotaRepository;
+import com.gaokao.essay.backend.security.InMemoryAbuseProtectionStore;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -27,7 +30,7 @@ class MembershipServiceTrialLimitTest {
 
     InMemoryQuotaRepository quotaRepository = new InMemoryQuotaRepository();
     quotaRepository.tryConsume("user_1", "ESSAY_DAY_2026-07-10", 1);
-    MembershipService service = new MembershipService(properties, quotaRepository, new InMemorySubscriptionRepository());
+    MembershipService service = serviceAt(properties, quotaRepository, Instant.parse("2026-07-10T10:00:00Z"));
 
     ApiException error = assertThrows(ApiException.class, () -> service.reserveEssayAccess(user()));
 
@@ -45,7 +48,7 @@ class MembershipServiceTrialLimitTest {
     quotaRepository.tryConsume("user_1", "ESSAY_TOTAL", 5);
     quotaRepository.tryConsume("user_1", "ESSAY_DAY_2026-07-10", 2);
 
-    MembershipService service = new MembershipService(properties, quotaRepository, new InMemorySubscriptionRepository());
+    MembershipService service = serviceAt(properties, quotaRepository, Instant.parse("2026-07-10T10:00:00Z"));
 
     Map<String, Object> entitlement = service.getEntitlement(user());
 
@@ -54,6 +57,20 @@ class MembershipServiceTrialLimitTest {
     assertEquals(1, entitlement.get("trialTotalUsed"));
     assertEquals(2, entitlement.get("trialDailyLimit"));
     assertEquals(1, entitlement.get("trialDailyUsed"));
+  }
+
+  private MembershipService serviceAt(
+      GaokaoProperties properties,
+      InMemoryQuotaRepository quotaRepository,
+      Instant instant
+  ) {
+    return new MembershipService(
+        properties,
+        quotaRepository,
+        new InMemorySubscriptionRepository(),
+        new InMemoryAbuseProtectionStore(),
+        Clock.fixed(instant, ZoneOffset.UTC)
+    );
   }
 
   private AuthenticatedUser user() {
