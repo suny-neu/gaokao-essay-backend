@@ -2,6 +2,7 @@ package com.gaokao.essay.backend.security;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -17,13 +18,14 @@ import org.springframework.stereotype.Component;
 public class InMemoryAbuseProtectionStore implements AbuseProtectionStore {
   private final Map<String, Counter> counters = new ConcurrentHashMap<>();
   private final Map<String, Challenge> challenges = new ConcurrentHashMap<>();
+  private final Map<String, OneTimeClaim> oneTimeClaims = new ConcurrentHashMap<>();
   private final Clock clock;
 
   public InMemoryAbuseProtectionStore() {
     this(Clock.systemUTC());
   }
 
-  InMemoryAbuseProtectionStore(Clock clock) {
+  public InMemoryAbuseProtectionStore(Clock clock) {
     this.clock = clock;
   }
 
@@ -68,6 +70,41 @@ public class InMemoryAbuseProtectionStore implements AbuseProtectionStore {
   }
 
   @Override
+  public void putOneTimeClaim(String claimHash, String subjectHash, Instant notBefore, Duration ttl) {
+    long now = clock.millis();
+    oneTimeClaims.put(claimHash, new OneTimeClaim(
+        subjectHash,
+        Math.max(notBefore.toEpochMilli(), now),
+        now + Math.max(ttl.toMillis(), 1000)
+    ));
+  }
+
+  @Override
+  public OneTimeClaimConsumption consumeOneTimeClaim(String claimHash, String subjectHash, Instant now) {
+    AtomicBoolean accepted = new AtomicBoolean(false);
+    AtomicBoolean early = new AtomicBoolean(false);
+    long nowMillis = now.toEpochMilli();
+    oneTimeClaims.compute(claimHash, (ignored, current) -> {
+      if (current == null || current.expiresAt < nowMillis) {
+        return null;
+      }
+      if (!current.subjectHash.equals(subjectHash)) {
+        return current;
+      }
+      if (nowMillis < current.notBeforeAt) {
+        early.set(true);
+        return current;
+      }
+      accepted.set(true);
+      return null;
+    });
+    if (accepted.get()) {
+      return OneTimeClaimConsumption.ACCEPTED;
+    }
+    return early.get() ? OneTimeClaimConsumption.TOO_EARLY : OneTimeClaimConsumption.MISSING_OR_MISMATCH;
+  }
+
+  @Override
   public boolean isPersistent() {
     return false;
   }
@@ -76,5 +113,8 @@ public class InMemoryAbuseProtectionStore implements AbuseProtectionStore {
   }
 
   private record Challenge(String subjectHash, long expiresAt) {
+  }
+
+  private record OneTimeClaim(String subjectHash, long notBeforeAt, long expiresAt) {
   }
 }

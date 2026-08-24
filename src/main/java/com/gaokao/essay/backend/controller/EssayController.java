@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaokao.essay.backend.model.ApiResponse;
 import com.gaokao.essay.backend.model.AuthenticatedUser;
 import com.gaokao.essay.backend.model.EssayTaskRequest;
+import com.gaokao.essay.backend.model.ModelEssayResult;
 import com.gaokao.essay.backend.service.EssayService;
 import com.gaokao.essay.backend.service.ChallengeService;
 import com.gaokao.essay.backend.service.RequestSecurityService;
 import com.gaokao.essay.backend.service.SessionService;
 import com.gaokao.essay.backend.service.WechatService;
+import com.gaokao.essay.backend.service.ModelEssayService;
 import com.gaokao.essay.backend.store.AppState;
 import com.gaokao.essay.backend.util.TextUtils;
 import java.io.IOException;
@@ -43,6 +45,7 @@ public class EssayController {
   private final ChallengeService challengeService;
   private final ObjectMapper objectMapper;
   private final com.gaokao.essay.backend.service.HistoryService historyService;
+  private final ModelEssayService modelEssayService;
 
   public EssayController(
       EssayService essayService,
@@ -51,7 +54,8 @@ public class EssayController {
       RequestSecurityService requestSecurityService,
       ChallengeService challengeService,
       ObjectMapper objectMapper,
-      com.gaokao.essay.backend.service.HistoryService historyService
+      com.gaokao.essay.backend.service.HistoryService historyService,
+      ModelEssayService modelEssayService
   ) {
     this.essayService = essayService;
     this.sessionService = sessionService;
@@ -60,6 +64,7 @@ public class EssayController {
     this.challengeService = challengeService;
     this.objectMapper = objectMapper;
     this.historyService = historyService;
+    this.modelEssayService = modelEssayService;
   }
 
   @GetMapping("/challenge")
@@ -135,6 +140,19 @@ public class EssayController {
     AuthenticatedUser user = sessionService.requireUser(request, authorizationHeader, null);
     requestSecurityService.checkHistoryRead(request, user.userId());
     return ApiResponse.ok(historyService.getRecord(user, id));
+  }
+
+  @PostMapping("/history/{id}/model-essay")
+  public ApiResponse<ModelEssayResult> modelEssay(
+      HttpServletRequest request,
+      @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+      @PathVariable String id,
+      @RequestBody(required = false) Map<String, ?> body
+  ) {
+    AuthenticatedUser user = sessionService.requireUser(request, authorizationHeader, null);
+    requestSecurityService.checkHistoryRead(request, user.userId());
+    boolean regenerate = body != null && Boolean.TRUE.equals(body.get("regenerate"));
+    return ApiResponse.ok(modelEssayService.getOrGenerate(user, id, regenerate));
   }
 
   @DeleteMapping("/history/{id}")

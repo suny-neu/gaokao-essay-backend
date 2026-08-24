@@ -50,7 +50,7 @@ public class SessionService {
 
     String token = extractBearerToken(authorizationHeader);
     if (!TextUtils.isBlank(token)) {
-      return jwtTokenService.parse(token);
+      return requireActiveBinding(jwtTokenService.parse(token));
     }
 
     if (!TextUtils.isBlank(requestOpenId) && properties.isRequestOpenIdFallbackEnabled()) {
@@ -65,7 +65,7 @@ public class SessionService {
       return null;
     }
     try {
-      return jwtTokenService.parse(token);
+      return requireActiveBinding(jwtTokenService.parse(token));
     } catch (ApiException error) {
       return null;
     }
@@ -107,7 +107,7 @@ public class SessionService {
     }
     Object value = request.getAttribute(AuthInterceptor.AUTH_USER_ATTRIBUTE);
     if (value instanceof AuthenticatedUser authenticatedUser) {
-      return authenticatedUser;
+      return requireActiveBinding(authenticatedUser);
     }
     return null;
   }
@@ -120,6 +120,17 @@ public class SessionService {
         issuedAt,
         issuedAt.plusSeconds(jwtTokenService.expiresInSeconds())
     );
+  }
+
+  private AuthenticatedUser requireActiveBinding(AuthenticatedUser user) {
+    UserBinding binding = userBindingRepository.findByOpenId(user.openId())
+        .filter(item -> item.userId().equals(user.userId()))
+        .orElseThrow(() -> new ApiException(
+            HttpStatus.UNAUTHORIZED,
+            "UNAUTHORIZED",
+            "当前登录态已失效，请重新进入小程序后再试"
+        ));
+    return new AuthenticatedUser(user.userId(), binding.openId(), user.issuedAt(), user.expiresAt());
   }
 
   private String extractBearerToken(String authorizationHeader) {

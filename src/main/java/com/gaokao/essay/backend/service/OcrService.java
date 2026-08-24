@@ -5,15 +5,26 @@ import com.gaokao.essay.backend.model.ApiException;
 import com.gaokao.essay.backend.util.TextUtils;
 import java.io.IOException;
 import java.util.Base64;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class OcrService {
+
+  private static final Pattern PARAGRAPH_ONE_PATTERN = Pattern.compile(
+      "^\\s*(?:(?:paragraph|para\\.?)\\s*1|第一段(?:首句)?)\\s*[:：.、-]?\\s*(.*)$",
+      Pattern.CASE_INSENSITIVE
+  );
+  private static final Pattern PARAGRAPH_TWO_PATTERN = Pattern.compile(
+      "^\\s*(?:(?:paragraph|para\\.?)\\s*2|第二段(?:首句)?)\\s*[:：.、-]?\\s*(.*)$",
+      Pattern.CASE_INSENSITIVE
+  );
 
   private final AiGatewayService aiGatewayService;
   private final ContentSafetyService contentSafetyService;
@@ -55,6 +66,9 @@ public class OcrService {
       response.put("source", "remote");
       response.put("provider", aiGatewayService.getVisionProviderLabel());
       response.put("scene", normalizedScene);
+      if ("question".equals(normalizedScene)) {
+        response.putAll(splitContinuationQuestion(text));
+      }
       return response;
     } catch (IOException error) {
       throw new ApiException(HttpStatus.BAD_REQUEST, "OCR_READ_FAILED", "读取图片失败，请重新选择图片后再试");
@@ -93,7 +107,45 @@ public class OcrService {
 
   private String normalizeScene(String scene) {
     String normalized = TextUtils.lower(scene);
-    return List.of("task", "source", "draft", "requirements").contains(normalized) ? normalized : "task";
+    return List.of("task", "source", "draft", "requirements", "question").contains(normalized) ? normalized : "task";
+  }
+
+  private Map<String, String> splitContinuationQuestion(String text) {
+    Map<String, StringBuilder> sections = new LinkedHashMap<>();
+    sections.put("sourceMaterial", new StringBuilder());
+    sections.put("paragraphOneStarter", new StringBuilder());
+    sections.put("paragraphTwoStarter", new StringBuilder());
+    String activeField = "sourceMaterial";
+    boolean foundStarter = false;
+
+    for (String line : String.valueOf(text).replace("\r\n", "\n").replace('\r', '\n').split("\n", -1)) {
+      Matcher firstMatcher = PARAGRAPH_ONE_PATTERN.matcher(line);
+      Matcher secondMatcher = PARAGRAPH_TWO_PATTERN.matcher(line);
+      if (firstMatcher.matches()) {
+        activeField = "paragraphOneStarter";
+        foundStarter = true;
+        appendLine(sections.get(activeField), firstMatcher.group(1));
+      } else if (secondMatcher.matches()) {
+        activeField = "paragraphTwoStarter";
+        foundStarter = true;
+        appendLine(sections.get(activeField), secondMatcher.group(1));
+      } else {
+        appendLine(sections.get(activeField), line);
+      }
+    }
+
+    Map<String, String> result = new LinkedHashMap<>();
+    result.put("sourceMaterial", foundStarter ? sections.get("sourceMaterial").toString().trim() : text.trim());
+    result.put("paragraphOneStarter", foundStarter ? sections.get("paragraphOneStarter").toString().trim() : "");
+    result.put("paragraphTwoStarter", foundStarter ? sections.get("paragraphTwoStarter").toString().trim() : "");
+    return result;
+  }
+
+  private void appendLine(StringBuilder target, String line) {
+    if (target.length() > 0) {
+      target.append('\n');
+    }
+    target.append(line == null ? "" : line);
   }
 
   private boolean looksLikeSupportedImage(byte[] bytes) {

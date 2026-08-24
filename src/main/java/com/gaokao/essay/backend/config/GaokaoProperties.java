@@ -557,15 +557,16 @@ public class GaokaoProperties {
   }
 
   public static class Membership {
-    private int trialTotalLimit = 5;
-    private int trialDailyLimit;
+    private int trialTotalLimit;
+    private int trialDailyLimit = 5;
     private int deviceDailyLimit = 4;
     private int ipDailyLimit = 20;
     private String quotaZoneId = "Asia/Shanghai";
     private boolean allowDebugSubscriptionActivate = true;
     private final AdReward adReward = new AdReward();
-    private final Plan monthly = new Plan("monthly", "包月会员", "30 天不限次作文生成与严格批改", 30, 3900, false);
-    private final Plan yearly = new Plan("yearly", "包年会员", "365 天不限次，更适合长期备考", 365, 29900, true);
+    private final Plan monthly = new Plan("monthly", "包月会员", "30 天不限次作文生成与严格批改", 30, 3900, false, false);
+    private final Plan annual = new Plan("annual", "包年会员", "365 天不限次，更适合长期备考", 365, 29900, true, false);
+    private final Plan founderLifetime = new Plan("founder_lifetime", "创始终身会员", "终身不限量作文生成与严格批改", 0, 59900, false, true);
 
     public int getTrialTotalLimit() {
       return trialTotalLimit;
@@ -619,8 +620,12 @@ public class GaokaoProperties {
       return monthly;
     }
 
-    public Plan getYearly() {
-      return yearly;
+    public Plan getAnnual() {
+      return annual;
+    }
+
+    public Plan getFounderLifetime() {
+      return founderLifetime;
     }
 
     public AdReward getAdReward() {
@@ -630,10 +635,12 @@ public class GaokaoProperties {
 
   public static class AdReward {
     private boolean enabled = true;
-    private int grantPerView = 1;
-    private int dailyMax = 10;
+    private int creditPerView = 1;
+    private int dailyLimit = 5;
     private int cooldownSeconds = 30;
     private int maxCredits = 50;
+    private int claimNotBeforeSeconds = 3;
+    private int claimTtlSeconds = 600;
 
     public boolean isEnabled() {
       return enabled;
@@ -643,20 +650,36 @@ public class GaokaoProperties {
       this.enabled = enabled;
     }
 
+    public int getCreditPerView() {
+      return Math.max(creditPerView, 1);
+    }
+
+    public void setCreditPerView(int creditPerView) {
+      this.creditPerView = creditPerView;
+    }
+
+    public int getDailyLimit() {
+      return Math.max(dailyLimit, 0);
+    }
+
+    public void setDailyLimit(int dailyLimit) {
+      this.dailyLimit = dailyLimit;
+    }
+
     public int getGrantPerView() {
-      return Math.max(grantPerView, 1);
+      return getCreditPerView();
     }
 
     public void setGrantPerView(int grantPerView) {
-      this.grantPerView = grantPerView;
+      setCreditPerView(grantPerView);
     }
 
     public int getDailyMax() {
-      return Math.max(dailyMax, 0);
+      return getDailyLimit();
     }
 
     public void setDailyMax(int dailyMax) {
-      this.dailyMax = dailyMax;
+      setDailyLimit(dailyMax);
     }
 
     public int getCooldownSeconds() {
@@ -673,6 +696,22 @@ public class GaokaoProperties {
 
     public void setMaxCredits(int maxCredits) {
       this.maxCredits = maxCredits;
+    }
+
+    public int getClaimNotBeforeSeconds() {
+      return Math.max(claimNotBeforeSeconds, 0);
+    }
+
+    public void setClaimNotBeforeSeconds(int claimNotBeforeSeconds) {
+      this.claimNotBeforeSeconds = claimNotBeforeSeconds;
+    }
+
+    public int getClaimTtlSeconds() {
+      return Math.max(claimTtlSeconds, 30);
+    }
+
+    public void setClaimTtlSeconds(int claimTtlSeconds) {
+      this.claimTtlSeconds = claimTtlSeconds;
     }
   }
 
@@ -820,17 +859,23 @@ public class GaokaoProperties {
     private int durationDays;
     private int priceFen;
     private boolean recommended;
+    private boolean lifetime;
 
     public Plan() {
     }
 
     public Plan(String code, String name, String description, int durationDays, int priceFen, boolean recommended) {
+      this(code, name, description, durationDays, priceFen, recommended, false);
+    }
+
+    public Plan(String code, String name, String description, int durationDays, int priceFen, boolean recommended, boolean lifetime) {
       this.code = code;
       this.name = name;
       this.description = description;
       this.durationDays = durationDays;
       this.priceFen = priceFen;
       this.recommended = recommended;
+      this.lifetime = lifetime;
     }
 
     public String getCode() {
@@ -879,6 +924,14 @@ public class GaokaoProperties {
 
     public void setRecommended(boolean recommended) {
       this.recommended = recommended;
+    }
+
+    public boolean isLifetime() {
+      return lifetime;
+    }
+
+    public void setLifetime(boolean lifetime) {
+      this.lifetime = lifetime;
     }
   }
 }

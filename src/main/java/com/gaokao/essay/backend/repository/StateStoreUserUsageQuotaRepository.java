@@ -61,10 +61,19 @@ public class StateStoreUserUsageQuotaRepository implements UserUsageQuotaReposit
 
   @Override
   public void release(String userId, String quotaType) {
+    releaseCredits(userId, quotaType, 1);
+  }
+
+  @Override
+  public void releaseCredits(String userId, String quotaType, int amount) {
+    int safeAmount = Math.max(amount, 0);
+    if (safeAmount <= 0) {
+      return;
+    }
     stateStore.write(state -> {
       AppState.UsageQuotaState quota = state.usageQuotas.get(key(userId, quotaType));
       if (quota != null) {
-        quota.usedCount = Math.max(quota.usedCount - 1, 0);
+        quota.usedCount = Math.max(quota.usedCount - safeAmount, 0);
         quota.updatedAt = TextUtils.formatInstant(Instant.now());
       }
       return null;
@@ -72,26 +81,29 @@ public class StateStoreUserUsageQuotaRepository implements UserUsageQuotaReposit
   }
 
   @Override
-  public void grantCredits(String userId, String quotaType, int amount, int maxCredits) {
-    int safeAmount = Math.max(amount, 0);
+  public int grantCredits(String userId, String quotaType, int amount, int maxCredits) {
+    int safeAmount = Math.min(Math.max(amount, 0), Math.max(maxCredits, 1));
     int safeMax = Math.max(maxCredits, 1);
-    stateStore.write(state -> {
+    return stateStore.write(state -> {
       String key = key(userId, quotaType);
       AppState.UsageQuotaState quota = state.usageQuotas.get(key);
       if (quota == null) {
         quota = new AppState.UsageQuotaState();
         quota.userId = userId;
         quota.quotaType = quotaType;
-        quota.usedCount = Math.min(safeAmount, safeMax);
+        quota.usedCount = safeAmount;
         quota.limitCount = safeMax;
         quota.updatedAt = TextUtils.formatInstant(Instant.now());
         state.usageQuotas.put(key, quota);
-      } else {
-        quota.usedCount = Math.min(quota.usedCount + safeAmount, safeMax);
-        quota.limitCount = safeMax;
-        quota.updatedAt = TextUtils.formatInstant(Instant.now());
+        return safeAmount;
       }
-      return null;
+      if (quota.usedCount + safeAmount > safeMax) {
+        return 0;
+      }
+      quota.usedCount += safeAmount;
+      quota.limitCount = safeMax;
+      quota.updatedAt = TextUtils.formatInstant(Instant.now());
+      return safeAmount;
     });
   }
 

@@ -11,7 +11,9 @@ public interface UserUsageQuotaRepository {
 
   void release(String userId, String quotaType);
 
-  void grantCredits(String userId, String quotaType, int amount, int maxCredits);
+  void releaseCredits(String userId, String quotaType, int amount);
+
+  int grantCredits(String userId, String quotaType, int amount, int maxCredits);
 
   boolean consumeCredit(String userId, String quotaType);
 }

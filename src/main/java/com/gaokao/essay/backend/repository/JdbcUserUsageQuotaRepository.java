@@ -63,66 +63,73 @@ public class JdbcUserUsageQuotaRepository implements UserUsageQuotaRepository {
 
   @Override
   public void release(String userId, String quotaType) {
+    releaseCredits(userId, quotaType, 1);
+  }
+
+  @Override
+  public void releaseCredits(String userId, String quotaType, int amount) {
+    int safeAmount = Math.max(amount, 0);
+    if (safeAmount <= 0) {
+      return;
+    }
     jdbcTemplate.update(
         """
         UPDATE user_usage_quota
-        SET used_count = CASE WHEN used_count > 0 THEN used_count - 1 ELSE 0 END,
+        SET used_count = CASE WHEN used_count > ? THEN used_count - ? ELSE 0 END,
             updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ? AND quota_type = ?
         """,
+        safeAmount,
+        safeAmount,
         userId,
         quotaType
     );
   }
 
   @Override
-  public void grantCredits(String userId, String quotaType, int amount, int maxCredits) {
-    int safeAmount = Math.max(amount, 0);
+  public int grantCredits(String userId, String quotaType, int amount, int maxCredits) {
+    int safeAmount = Math.min(Math.max(amount, 0), Math.max(maxCredits, 1));
     int safeMax = Math.max(maxCredits, 1);
+    if (safeAmount <= 0) {
+      return 0;
+    }
+    if (tryGrantExistingCredits(userId, quotaType, safeAmount, safeMax)) {
+      return safeAmount;
+    }
+    try {
+      int insertedRows = jdbcTemplate.update(
+          """
+          INSERT INTO user_usage_quota (user_id, quota_type, used_count, limit_count, updated_at)
+          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+          """,
+          userId,
+          quotaType,
+          safeAmount,
+          safeMax
+      );
+      return insertedRows > 0 ? safeAmount : 0;
+    } catch (DuplicateKeyException ignored) {
+      return tryGrantExistingCredits(userId, quotaType, safeAmount, safeMax) ? safeAmount : 0;
+    }
+  }
+
+  private boolean tryGrantExistingCredits(String userId, String quotaType, int amount, int maxCredits) {
     int updatedRows = jdbcTemplate.update(
         """
         UPDATE user_usage_quota
-        SET used_count = LEAST(used_count + ?, ?),
+        SET used_count = used_count + ?,
             limit_count = ?,
             updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ? AND quota_type = ?
+        WHERE user_id = ? AND quota_type = ? AND used_count + ? <= ?
         """,
-        safeAmount,
-        safeMax,
-        safeMax,
+        amount,
+        maxCredits,
         userId,
-        quotaType
+        quotaType,
+        amount,
+        maxCredits
     );
-    if (updatedRows == 0) {
-      try {
-        jdbcTemplate.update(
-            """
-            INSERT INTO user_usage_quota (user_id, quota_type, used_count, limit_count, updated_at)
-            VALUES (?, ?, LEAST(?, ?), ?, CURRENT_TIMESTAMP)
-            """,
-            userId,
-            quotaType,
-            safeAmount,
-            safeMax,
-            safeMax
-        );
-      } catch (DuplicateKeyException ignored) {
-        jdbcTemplate.update(
-            """
-            UPDATE user_usage_quota
-            SET used_count = LEAST(used_count + ?, ?),
-                limit_count = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ? AND quota_type = ?
-            """,
-            safeAmount,
-            safeMax,
-            safeMax,
-            userId,
-            quotaType
-        );
-      }
-    }
+    return updatedRows > 0;
   }
 
   @Override

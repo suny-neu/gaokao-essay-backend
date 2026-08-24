@@ -1,5 +1,6 @@
 package com.gaokao.essay.backend.store;
 
+import com.gaokao.essay.backend.model.ModelEssayResult;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -119,6 +120,7 @@ public class AppState {
     public List<ScoreDimension> scoreDimensions = new ArrayList<>();
     public List<SentenceDiagnosis> sentenceDiagnostics = new ArrayList<>();
     public WeaknessProfile weaknessProfile = null;
+    public ModelEssayResult modelEssay = null;
   }
 
   public static class ScoreDimension {
@@ -129,6 +131,9 @@ public class AppState {
   }
 
   public static class SentenceDiagnosis {
+    public String kind = "";
+    public String errorType = "";
+    public boolean legacyInferred = false;
     public String original = "";
     public String diagnosis = "";
     public String revision = "";

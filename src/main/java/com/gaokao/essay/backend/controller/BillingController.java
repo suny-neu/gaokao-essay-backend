@@ -39,7 +39,11 @@ public class BillingController {
 
   @GetMapping("/plans")
   public ApiResponse<List<Map<String, Object>>> plans() {
-    return ApiResponse.ok(membershipService.getPlans());
+    boolean paymentReady = wechatPayService.isReady();
+    String paymentMode = !wechatPayService.isEnabled()
+        ? "disabled"
+        : (paymentReady ? "live" : "configured-but-unready");
+    return ApiResponse.ok(membershipService.getPlans(paymentReady, paymentMode));
   }
 
   @PostMapping("/subscription/debug-activate")

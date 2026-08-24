@@ -79,6 +79,8 @@ public class CoachKnowledgeBaseService {
     lines.add("- 当前陪练模式：" + guidance.getCoachMode());
     lines.add("- 你不能自由发散，必须按照 coachPlan 槽位返回：stage / coachingMode / opening / body / ending / mustInclude / riskPoints / suggestedExpressions / routeAction / routeReason。");
 
+    appendSentenceModeRules(lines, guidance.getCoachMode());
+
     if ("application".equals(essayType)) {
       appendApplicationRules(lines, request, guidance);
     } else if ("continuation".equals(essayType)) {
@@ -322,6 +324,18 @@ public class CoachKnowledgeBaseService {
     lines.add("- 若学生作文存在 AI 腔、模板腔、Tell 而不 Show，需要明确点名。");
   }
 
+  private void appendSentenceModeRules(List<String> lines, String coachMode) {
+    if ("sentence_correction".equals(coachMode)) {
+      lines.add("- 当前是检查错误模式：只指出必须修改的语法、拼写或用词错误。句子正确时必须明确说“未发现真实错误”。");
+      lines.add("- 不得把可选升级说成错误；如需补充更自然、更正式的表达，只能另列为可选改进。");
+      return;
+    }
+    if ("sentence_upgrade".equals(coachMode)) {
+      lines.add("- 当前是升级表达模式：原句正确时，提供更自然、更正式的可选改进。");
+      lines.add("- 所有改动都必须说明为可选改进，而非错误。");
+    }
+  }
+
   private List<String> extractPoints(String taskContent) {
     if (TextUtils.isBlank(taskContent)) {
       return List.of();
@@ -444,7 +458,7 @@ public class CoachKnowledgeBaseService {
 
   private String normalizeCoachMode(String coachMode) {
     String normalized = TextUtils.lower(coachMode);
-    return List.of("prompt_analysis", "outline", "sentence_upgrade", "weakness_drill", "routing").contains(normalized)
+    return List.of("prompt_analysis", "outline", "sentence_correction", "sentence_upgrade", "weakness_drill", "routing").contains(normalized)
         ? normalized
         : "";
   }
@@ -515,6 +529,9 @@ public class CoachKnowledgeBaseService {
       String stage,
       List<String> points
   ) {
+    if ("sentence_correction".equals(coachMode)) {
+      return List.of("只检查必须修改的语法、拼写或用词问题", "把真实错误和可选升级分开说明", "没有真实错误时明确给出结论");
+    }
     if ("continuation".equals(essayType)) {
       if ("prompt_analysis".equals(coachMode)) {
         return List.of("先看原文冲突和人物当下处境", "先分清两段各自要完成什么", "先圈出可回收的线索");
@@ -547,6 +564,9 @@ public class CoachKnowledgeBaseService {
     if ("routing".equals(coachMode)) {
       return "先判断你现在最该继续陪练、直接下笔，还是切去严格批改。";
     }
+    if ("sentence_correction".equals(coachMode)) {
+      return "这一轮只检查必须修改的错误；原句正确时，明确告诉学生未发现真实错误。";
+    }
     if ("sentence_upgrade".equals(coachMode)) {
       return "这一轮只做句子升级：去模板感、调语气、加一点自然呼吸感。";
     }
@@ -568,6 +588,9 @@ public class CoachKnowledgeBaseService {
       String stage,
       List<String> points
   ) {
+    if ("sentence_correction".equals(coachMode)) {
+      return List.of("逐项检查语法、拼写和用词", "只改必须修改的地方", "若无错误，写出“未发现真实错误”");
+    }
     if ("continuation".equals(essayType)) {
       if ("prompt_analysis".equals(coachMode)) {
         return List.of("用一句话说清原文的核心冲突", "分别写出第一段和第二段各要完成什么", "圈出 1 到 2 个要回收的线索");
@@ -600,6 +623,9 @@ public class CoachKnowledgeBaseService {
     if ("routing".equals(coachMode)) {
       return "你能清楚知道下一步该继续陪练、直接下笔，还是去严格批改。";
     }
+    if ("sentence_correction".equals(coachMode)) {
+      return "你能区分必须修改的真实错误和可选的表达升级。";
+    }
     if ("sentence_upgrade".equals(coachMode)) {
       return "改完后，句子读起来更像考场里自然写出来的，而不是背模板。";
     }
@@ -613,7 +639,7 @@ public class CoachKnowledgeBaseService {
     if ((hasDraft && "postwrite".equals(stage)) || ("routing".equals(coachMode) && hasDraft)) {
       return "switch_to_grade";
     }
-    if ("routing".equals(coachMode) || "sentence_upgrade".equals(coachMode)) {
+    if ("routing".equals(coachMode) || "sentence_correction".equals(coachMode) || "sentence_upgrade".equals(coachMode)) {
       return "write_now";
     }
     return "continue_coach";
@@ -625,6 +651,9 @@ public class CoachKnowledgeBaseService {
     }
     if ("routing".equals(coachMode)) {
       return "题意和方向已经够了，现在最值钱的是先把第一版写出来，再决定要不要精修。";
+    }
+    if ("sentence_correction".equals(coachMode)) {
+      return "先分清有没有必须修改的错误；确认后再决定要不要做可选表达升级。";
     }
     if ("sentence_upgrade".equals(coachMode)) {
       return "句子顺了以后，不要继续停在局部打磨，直接把这一版往下写更划算。";

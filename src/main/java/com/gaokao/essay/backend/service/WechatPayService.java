@@ -115,8 +115,9 @@ public class WechatPayService {
   }
 
   public Map<String, Object> createSubscriptionOrder(AuthenticatedUser user, String planCode, boolean autoRenewRequested) {
-    ensurePaymentReady();
     GaokaoProperties.Plan plan = membershipService.requirePlan(planCode);
+    membershipService.requirePurchaseAllowed(user, plan);
+    ensurePaymentReady();
     Instant now = Instant.now();
     String outTradeNo = buildOutTradeNo();
     String description = buildDescription(plan);

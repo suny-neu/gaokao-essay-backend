@@ -5,3 +5,4 @@ deploy/lighthouse/.env
 *.log
 supabase/.temp/
 .DS_Store
+/data/runtime-state.json

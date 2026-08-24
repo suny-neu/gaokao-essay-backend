@@ -1,6 +1,7 @@
 package com.gaokao.essay.backend.security;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -22,6 +23,13 @@ public class RedisAbuseProtectionStore implements AbuseProtectionStore {
   );
   private static final DefaultRedisScript<Long> CONSUME_CHALLENGE = new DefaultRedisScript<>(
       "local v=redis.call('GET',KEYS[1]); if not v or v~=ARGV[1] then return 0; end; "
+          + "redis.call('DEL',KEYS[1]); return 1;",
+      Long.class
+  );
+  private static final DefaultRedisScript<Long> CONSUME_ONE_TIME_CLAIM = new DefaultRedisScript<>(
+      "local v=redis.call('GET',KEYS[1]); if not v then return 0; end; "
+          + "local p=string.find(v,'|'); if not p or string.sub(v,1,p-1)~=ARGV[1] then return 0; end; "
+          + "if tonumber(ARGV[2])<tonumber(string.sub(v,p+1)) then return -1; end; "
           + "redis.call('DEL',KEYS[1]); return 1;",
       Long.class
   );
@@ -64,6 +72,31 @@ public class RedisAbuseProtectionStore implements AbuseProtectionStore {
         subjectHash
     );
     return Long.valueOf(1).equals(result);
+  }
+
+  @Override
+  public void putOneTimeClaim(String claimHash, String subjectHash, Instant notBefore, Duration ttl) {
+    redis.opsForValue().set(
+        prefixed("claim:" + claimHash),
+        subjectHash + "|" + notBefore.toEpochMilli(),
+        ttl
+    );
+  }
+
+  @Override
+  public OneTimeClaimConsumption consumeOneTimeClaim(String claimHash, String subjectHash, Instant now) {
+    Long result = redis.execute(
+        CONSUME_ONE_TIME_CLAIM,
+        List.of(prefixed("claim:" + claimHash)),
+        subjectHash,
+        String.valueOf(now.toEpochMilli())
+    );
+    if (Long.valueOf(1).equals(result)) {
+      return OneTimeClaimConsumption.ACCEPTED;
+    }
+    return Long.valueOf(-1).equals(result)
+        ? OneTimeClaimConsumption.TOO_EARLY
+        : OneTimeClaimConsumption.MISSING_OR_MISMATCH;
   }
 
   @Override

@@ -24,6 +24,7 @@ public class EssayService {
   private final CoachKnowledgeBaseService coachKnowledgeBaseService;
   private final StudyProfileService studyProfileService;
   private final ObjectMapper objectMapper;
+  private final SentenceDiagnosisClassifier sentenceDiagnosisClassifier = new SentenceDiagnosisClassifier();
 
   public EssayService(
       MembershipService membershipService,
@@ -62,13 +63,11 @@ public class EssayService {
     }
 
     MembershipService.UsageReservation reservation = null;
-    boolean upstreamCallStarted = false;
     try {
       reservation = TextUtils.isBlank(deviceId) && TextUtils.isBlank(clientIp)
           ? membershipService.reserveEssayAccess(user)
           : membershipService.reserveEssayAccess(user, deviceId, clientIp);
       CoachKnowledgeBaseService.CoachGuidance coachGuidance = coachKnowledgeBaseService.prepareKnowledge(request);
-      upstreamCallStarted = true;
       String rawResponse = aiGatewayService.requestJsonText(
           buildSystemPrompt(request, coachGuidance),
           buildUserPrompt(request, coachGuidance)
@@ -87,7 +86,7 @@ public class EssayService {
       String streamText = resolveStreamText(claimedRecord);
       return new EssayExecution(claimedRecord, streamText);
     } catch (RuntimeException error) {
-      if (reservation != null && !upstreamCallStarted) {
+      if (reservation != null) {
         membershipService.releaseReservation(reservation);
       }
       markFailedRecord(claimedRecord);
@@ -117,11 +116,16 @@ public class EssayService {
       boolean hasTaskContent = !TextUtils.isBlank(request.getTaskContent());
       boolean hasDraftText = !TextUtils.isBlank(request.getDraftText());
 
+      if (!TextUtils.isBlank(coachMode)
+          && !List.of("prompt_analysis", "outline", "sentence_correction", "sentence_upgrade", "weakness_drill", "routing").contains(coachMode)) {
+        throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_COACH_MODE", "不支持的陪练模式");
+      }
+
       if ("prewrite".equals(coachStage) && !hasTaskContent) {
         throw new ApiException(HttpStatus.BAD_REQUEST, "TASK_REQUIRED", "写前陪练请先输入题目内容");
       }
-      if ("sentence_upgrade".equals(coachMode) && !hasDraftText) {
-        throw new ApiException(HttpStatus.BAD_REQUEST, "DRAFT_REQUIRED", "句子升级请先贴上现有句子或草稿");
+      if (("sentence_correction".equals(coachMode) || "sentence_upgrade".equals(coachMode)) && !hasDraftText) {
+        throw new ApiException(HttpStatus.BAD_REQUEST, "DRAFT_REQUIRED", "句子检查或升级请先贴上现有句子或草稿");
       }
       if ("postwrite".equals(coachStage) && !hasDraftText) {
         throw new ApiException(HttpStatus.BAD_REQUEST, "DRAFT_REQUIRED", "写后陪练请先贴上你的作文草稿");
@@ -267,7 +271,7 @@ public class EssayService {
         analysisNode.path("scoreDimensions"),
         parseScoreValue(root.path("scoreText").asText(""))
     );
-    analysis.sentenceDiagnostics = readSentenceDiagnostics(analysisNode.path("sentenceDiagnostics"));
+    analysis.sentenceDiagnostics = readSentenceDiagnostics(analysisNode.path("sentenceDiagnostics"), analysis);
     if (analysisNode.has("weaknessProfile")) {
       AppState.WeaknessProfile profile = new AppState.WeaknessProfile();
       profile.headline = analysisNode.path("weaknessProfile").path("headline").asText("");
@@ -402,13 +406,21 @@ public class EssayService {
         + "\"machineRiskDiagnosis\":\"...\",\"contentDiagnosis\":\"...\",\"structureDiagnosis\":\"...\","
         + "\"languageFitnessDiagnosis\":\"...\",\"languageDiagnosis\":\"...\",\"flowDiagnosis\":\"...\","
         + "\"highlightDiagnosis\":\"...\",\"lossPointDiagnosis\":\"...\",\"overallComment\":\"...\","
-        + "\"sentenceDiagnostics\":[{\"original\":\"...\",\"diagnosis\":\"...\",\"revision\":\"...\"}],"
+        + "\"sentenceDiagnostics\":[{\"kind\":\"ERROR_CORRECTION\",\"errorType\":\"GRAMMAR\",\"original\":\"...\",\"diagnosis\":\"...\",\"revision\":\"...\"}],"
         + "\"scoreDimensions\":[{\"code\":\"content\",\"label\":\"内容\",\"score\":4,\"maxScore\":5},"
         + "{\"code\":\"language\",\"label\":\"语言\",\"score\":4,\"maxScore\":5},"
         + "{\"code\":\"structure\",\"label\":\"结构\",\"score\":2,\"maxScore\":3},"
         + "{\"code\":\"vocabulary\",\"label\":\"词汇\",\"score\":1,\"maxScore\":2}],"
         + "\"secondDraftGuidance\":\"...\",\"improvedEssay\":\"英文提分稿\",\"weaknessProfile\":{\"headline\":\"...\","
         + "\"nextFocus\":\"...\",\"sampleSize\":1,\"tags\":[{\"code\":\"show\",\"label\":\"Show 不足\",\"hitCount\":1}]}}}");
+    lines.add("sentenceDiagnostics 的每条都必须包含 kind、errorType、original、diagnosis、revision。");
+    lines.add("kind 只能为 ERROR_CORRECTION 或 EXPRESSION_UPGRADE。正确句子不能标为错误；"
+        + "语法正确但只是更自然、更正式或更有表现力时，必须标为 EXPRESSION_UPGRADE。");
+    lines.add("ERROR_CORRECTION 的 errorType 只能为 GRAMMAR、SPELLING、WORD_CHOICE、PUNCTUATION 或 CONTENT；"
+        + "EXPRESSION_UPGRADE 必须使用 NONE，且不计入错误数量或错误类成长档案。");
+    lines.add("ERROR_CORRECTION 只有在 original 和 revision 都是可核对的完整英文句子时才允许保留；"
+        + "缺少任一英文句子或字段内容为中文时，必须改写到 contentDiagnosis，不能作为逐句错误。");
+    lines.add("逐句诊断只保留 2 到 3 条典型项，两种 kind 都可以出现；不要为了增加建议数量把正确句子描述成错误。");
     lines.add("如果原始输出缺少某些槽位，请根据原始内容和学生原文补齐，但不要另起炉灶。");
     lines.add("scoreDimensions 固定为内容5分、语言5分、结构3分、词汇2分，四项 score 之和必须与 scoreText 总分完全一致。");
     lines.add("原始输出：\n" + rawResponse);
@@ -483,7 +495,7 @@ public class EssayService {
     return plan;
   }
 
-  private List<AppState.SentenceDiagnosis> readSentenceDiagnostics(JsonNode node) {
+  private List<AppState.SentenceDiagnosis> readSentenceDiagnostics(JsonNode node, AppState.GradeAnalysis analysis) {
     if (node == null || !node.isArray()) {
       return List.of();
     }
@@ -493,11 +505,42 @@ public class EssayService {
       item.original = firstNonBlank(entry.path("original").asText(""), entry.path("source").asText(""));
       item.diagnosis = firstNonBlank(entry.path("diagnosis").asText(""), entry.path("teacherDiagnosis").asText(""));
       item.revision = firstNonBlank(entry.path("revision").asText(""), entry.path("rewrite").asText(""));
+      SentenceDiagnosisClassifier.Classification classification = sentenceDiagnosisClassifier.normalize(
+          entry.path("kind").asText(""),
+          entry.path("errorType").asText(""),
+          item.diagnosis
+      );
+      item.kind = classification.kind();
+      item.errorType = classification.errorType();
+      item.legacyInferred = classification.legacyInferred();
+      if ("ERROR_CORRECTION".equals(item.kind) && (!isEnglishText(item.original) || !isEnglishText(item.revision))) {
+        String suggestion = firstNonBlank(item.diagnosis, firstNonBlank(item.revision, item.original));
+        analysis.contentDiagnosis = appendContentSuggestion(analysis.contentDiagnosis, suggestion);
+        continue;
+      }
       if (!TextUtils.isBlank(item.original) || !TextUtils.isBlank(item.diagnosis) || !TextUtils.isBlank(item.revision)) {
         items.add(item);
       }
     }
     return items;
+  }
+
+  private boolean isEnglishText(String value) {
+    String text = TextUtils.trimToEmpty(value);
+    boolean hasLatin = text.codePoints()
+        .anyMatch(codePoint -> Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.LATIN);
+    boolean hasHan = text.codePoints()
+        .anyMatch(codePoint -> Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN);
+    return hasLatin && !hasHan;
+  }
+
+  private String appendContentSuggestion(String existing, String suggestion) {
+    String current = TextUtils.trimToEmpty(existing);
+    String addition = TextUtils.trimToEmpty(suggestion);
+    if (TextUtils.isBlank(addition) || current.contains(addition)) {
+      return current;
+    }
+    return TextUtils.isBlank(current) ? addition : current + "\n" + addition;
   }
 
   private AppState.CoachPlan mergeCoachPlan(AppState.CoachPlan parsed, AppState.CoachPlan fallback) {
@@ -707,14 +750,20 @@ public class EssayService {
         + "\"typeJudgment\":\"...\",\"wordCountRisk\":\"...\",\"alignmentDiagnosis\":\"...\",\"machineRiskDiagnosis\":\"...\","
         + "\"contentDiagnosis\":\"...\",\"structureDiagnosis\":\"...\",\"languageFitnessDiagnosis\":\"...\","
         + "\"languageDiagnosis\":\"...\",\"flowDiagnosis\":\"...\",\"highlightDiagnosis\":\"...\",\"lossPointDiagnosis\":\"...\","
-        + "\"overallComment\":\"...\",\"sentenceDiagnostics\":[{\"original\":\"...\",\"diagnosis\":\"...\",\"revision\":\"...\"}],"
+        + "\"overallComment\":\"...\",\"sentenceDiagnostics\":[{\"kind\":\"ERROR_CORRECTION\",\"errorType\":\"GRAMMAR\",\"original\":\"...\",\"diagnosis\":\"...\",\"revision\":\"...\"}],"
         + "\"scoreDimensions\":[{\"code\":\"content\",\"label\":\"内容\",\"score\":4,\"maxScore\":5},"
         + "{\"code\":\"language\",\"label\":\"语言\",\"score\":4,\"maxScore\":5},"
         + "{\"code\":\"structure\",\"label\":\"结构\",\"score\":2,\"maxScore\":3},"
         + "{\"code\":\"vocabulary\",\"label\":\"词汇\",\"score\":1,\"maxScore\":2}],"
         + "\"secondDraftGuidance\":\"...\",\"improvedEssay\":\"英文提分稿\",\"weaknessProfile\":{"
         + "\"headline\":\"...\",\"nextFocus\":\"...\",\"sampleSize\":1,\"tags\":[{\"code\":\"show\",\"label\":\"Show 不足\",\"hitCount\":1}]}}}"
-        + "。scoreDimensions 固定为内容5分、语言5分、结构3分、词汇2分，四项 score 之和必须与 scoreText 总分完全一致。";
+        + "。scoreDimensions 固定为内容5分、语言5分、结构3分、词汇2分，四项 score 之和必须与 scoreText 总分完全一致。"
+        + "每条 sentenceDiagnostics 必须使用 kind 和 errorType：真实错误只能标 ERROR_CORRECTION，"
+        + "errorType 只能是 GRAMMAR、SPELLING、WORD_CHOICE、PUNCTUATION 或 CONTENT；原句正确、"
+        + "仅为更自然/正式/有表现力的修改必须标 EXPRESSION_UPGRADE 且 errorType 为 NONE。"
+        + "ERROR_CORRECTION 的 original 和 revision 必须都是完整英文句子；缺少英文对照或内容为中文时，"
+        + "必须写入 contentDiagnosis，不能作为逐句错误。不得把正确句子标为错误；表达升级不得降低错误评分或计入错误。逐句诊断只给 2 到 3 条典型项，"
+        + "其中可包含任一种 kind。";
   }
 
   private String buildUserPrompt(
@@ -752,17 +801,22 @@ public class EssayService {
       lines.add("6. 第一步必须覆盖：题型判断、字数核查、切题与结构初筛、模板感与机器感筛查。");
       lines.add("7. 第二步必须单独给出：题型判断、字数与档位风险、要点覆盖与协同性、词汇与语法得体度、隐性衔接与呼吸感、模板感 / 机器感风险、保守估分、一句总评。");
       lines.add("8. 第三步必须挑出 2 到 3 句最典型失分句，分别给出原句、诊断、提分改法。");
-      lines.add("9. 所有判断都必须基于学生作文里的具体文本证据。不要直接说 AI 写的，只能说存在明显模板化 / 机器感风险，并说明证据。");
-      lines.add("10. 整篇提分稿默认保留学生原有核心意思、结构和情节，不要大幅魔改。");
-      lines.add("11. 如果是读后续写但原文材料或两段段首句不完整，必须明确说明只能做有限诊断。");
-      lines.add("12. 批改时要指出内容、结构、语言、亮点、失分点，并给二稿提升建议和整篇提分稿。");
+      lines.add("9. 每条逐句诊断必须包含 kind 和 errorType。真实错误使用 ERROR_CORRECTION，errorType 只能是 GRAMMAR、SPELLING、WORD_CHOICE、PUNCTUATION 或 CONTENT；原句正确但可更自然的表达升级使用 EXPRESSION_UPGRADE 和 NONE。ERROR_CORRECTION 的 original 和 revision 必须都是完整英文句子；缺少任一英文句子或内容为中文时，必须写入 contentDiagnosis，不能作为逐句错误。不得为了增加建议把正确句子标为错误；表达升级不得降低错误评分或计入错误。");
+      lines.add("10. 所有判断都必须基于学生作文里的具体文本证据。不要直接说 AI 写的，只能说存在明显模板化 / 机器感风险，并说明证据。");
+      lines.add("11. 整篇提分稿默认保留学生原有核心意思、结构和情节，不要大幅魔改。");
+      lines.add("12. 如果是读后续写但原文材料或两段段首句不完整，必须明确说明只能做有限诊断。");
+      lines.add("13. 批改时要指出内容、结构、语言、亮点、失分点，并给二稿提升建议和整篇提分稿。");
     } else {
       lines.add("4. 陪练时要严格贴合知识库骨架，输出可直接下笔的中文指导，不要直接代写整篇范文。");
       lines.add("5. 先判断用户所处阶段是写前、写中还是写后，再按当前陪练模式给最轻最有用的指导。");
       lines.add("6. 应用文优先看任务要求、身份语气和要点顺序；读后续写优先看线索、动作链和第二段段首句衔接。");
       lines.add("7. 结果里必须给出下一步建议：继续陪练、直接下笔，或转去严格批改。");
+      if ("sentence_correction".equals(coachGuidance.getCoachMode())) {
+        lines.add("8. 当前是检查错误模式：只判断必须修改的语法、拼写或用词错误；句子正确时必须写“未发现真实错误”，不得把可选升级说成错误。");
+      }
       if ("sentence_upgrade".equals(coachGuidance.getCoachMode())) {
-        lines.add("8. 当前是句子升级模式：优先处理用户已有句子或草稿，去模板感，调语气和节奏，不要整篇另写。");
+        lines.add("8. 当前是句子升级模式：原句正确时，所有改动都要说明为可选改进，而非错误。");
+        lines.add("9. 优先处理用户已有句子或草稿，去模板感，调语气和节奏，不要整篇另写。");
       }
       if ("routing".equals(coachGuidance.getCoachMode())) {
         lines.add("8. 当前是分流建议模式：请明确判断下一步最值钱的动作，并说明理由。");

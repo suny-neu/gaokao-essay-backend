@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -23,14 +24,18 @@ public class GrowthProfileService {
       Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*(?:分)?\\s*/\\s*(\\d+(?:\\.\\d+)?)");
 
   private static final List<ErrorRule> ERROR_RULES = List.of(
-      rule("task_completion", "内容要点", "要点|遗漏|任务|信息不全|偏题|跑题|覆盖不全"),
+      rule("task_completion", "内容要点", "内容|要点|遗漏|任务|信息不全|偏题|跑题|覆盖不全"),
       rule("structure_flow", "结构推进", "结构|衔接|过渡|段落|逻辑|推进|段首句|呼应"),
       rule("language_naturalness", "语言自然度", "模板|机器|AI腔|学术腔|生硬|不自然|套话"),
-      rule("grammar_accuracy", "语法准确度", "语法|时态|主谓一致|拼写|冠词|搭配"),
+      rule("grammar_accuracy", "语法准确度", "语法|时态|主谓一致|拼写|冠词|搭配|标点"),
       rule("show_not_tell", "细节外显", "show|tell|动作|细节|外显|空泛|情绪词"),
       rule("word_count", "字数控制", "字数|词数|超标|不足|降档"),
       rule("tone_identity", "语气与身份", "语气|身份|称呼|格式|礼貌"),
       rule("continuation_alignment", "续写协同", "协同|线索|回收|首句|前文|闭环")
+  );
+
+  private static final Set<String> TRUSTED_ERROR_TYPES = Set.of(
+      "GRAMMAR", "SPELLING", "WORD_CHOICE", "PUNCTUATION", "CONTENT"
   );
 
   private final EssayRecordRepository essayRecordRepository;
@@ -212,14 +217,14 @@ public class GrowthProfileService {
       String evidence = "";
 
       for (AppState.EssayRecord record : records) {
-        String recordEvidence = buildEvidence(record.analysis);
+        String recordEvidence = buildGrowthErrorEvidence(record.analysis);
         if (rule.pattern().matcher(recordEvidence).find()) {
           occurrences += 1;
           evidence = recordEvidence;
         }
       }
       for (int index = records.size() - 1; index >= 0; index -= 1) {
-        String recordEvidence = buildEvidence(records.get(index).analysis);
+        String recordEvidence = buildGrowthErrorEvidence(records.get(index).analysis);
         if (!rule.pattern().matcher(recordEvidence).find()) {
           break;
         }
@@ -252,9 +257,9 @@ public class GrowthProfileService {
     List<GrowthProfile.MasteryItem> result = new ArrayList<>();
     for (ErrorRule rule : ERROR_RULES) {
       boolean appearedBefore = records.subList(0, records.size() - 3).stream()
-          .anyMatch(item -> rule.pattern().matcher(buildEvidence(item.analysis)).find());
+          .anyMatch(item -> rule.pattern().matcher(buildGrowthErrorEvidence(item.analysis)).find());
       boolean absentRecently = latestThree.stream()
-          .noneMatch(item -> rule.pattern().matcher(buildEvidence(item.analysis)).find());
+          .noneMatch(item -> rule.pattern().matcher(buildGrowthErrorEvidence(item.analysis)).find());
       if (appearedBefore && absentRecently) {
         result.add(new GrowthProfile.MasteryItem(
             rule.code(),
@@ -341,20 +346,32 @@ public class GrowthProfileService {
     return Optional.of(new ScoreValue(value, max));
   }
 
-  private String buildEvidence(AppState.GradeAnalysis analysis) {
-    if (analysis == null) {
+  private String buildGrowthErrorEvidence(AppState.GradeAnalysis analysis) {
+    if (analysis == null || analysis.sentenceDiagnostics == null) {
       return "";
     }
-    return List.of(
-        analysis.contentDiagnosis,
-        analysis.structureDiagnosis,
-        analysis.languageDiagnosis,
-        analysis.lossPointDiagnosis,
-        analysis.secondDraftGuidance
-    ).stream()
-        .filter(value -> !TextUtils.isBlank(value))
-        .map(String::trim)
+    return analysis.sentenceDiagnostics.stream()
+        .filter(this::isTrustedErrorCorrection)
+        .map(this::growthErrorEvidence)
         .collect(Collectors.joining("\n"));
+  }
+
+  private boolean isTrustedErrorCorrection(AppState.SentenceDiagnosis diagnosis) {
+    return diagnosis != null
+        && "ERROR_CORRECTION".equals(diagnosis.kind)
+        && !diagnosis.legacyInferred
+        && TRUSTED_ERROR_TYPES.contains(diagnosis.errorType);
+  }
+
+  private String growthErrorEvidence(AppState.SentenceDiagnosis diagnosis) {
+    return switch (diagnosis.errorType) {
+      case "GRAMMAR" -> "语法";
+      case "SPELLING" -> "拼写";
+      case "WORD_CHOICE" -> "搭配";
+      case "PUNCTUATION" -> "标点";
+      case "CONTENT" -> "内容";
+      default -> "";
+    };
   }
 
   private String abbreviateEvidence(String evidence) {

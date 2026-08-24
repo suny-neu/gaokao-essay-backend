@@ -2,6 +2,7 @@ package com.gaokao.essay.backend.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -28,6 +29,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 class EssayServiceIdempotencyTest {
@@ -97,6 +99,82 @@ class EssayServiceIdempotencyTest {
     assertEquals("REQUEST_IN_PROGRESS", error.getCode());
     verify(membershipService, never()).reserveEssayAccess(any());
     verify(aiGatewayService, never()).requestJsonText(anyString(), anyString());
+  }
+
+  @Test
+  void shouldReuseRepairedGradeRecordWithNormalizedExpressionUpgrade() {
+    MembershipService membershipService = Mockito.mock(MembershipService.class);
+    ContentSafetyService contentSafetyService = Mockito.mock(ContentSafetyService.class);
+    AiGatewayService aiGatewayService = Mockito.mock(AiGatewayService.class);
+    CoachKnowledgeBaseService coachKnowledgeBaseService = Mockito.mock(CoachKnowledgeBaseService.class);
+    StudyProfileService studyProfileService = Mockito.mock(StudyProfileService.class);
+    HistoryService historyService = new HistoryService(new InMemoryEssayRecordRepository());
+    EssayService essayService = new EssayService(
+        membershipService,
+        contentSafetyService,
+        historyService,
+        aiGatewayService,
+        coachKnowledgeBaseService,
+        studyProfileService,
+        new ObjectMapper()
+    );
+
+    AuthenticatedUser user = authenticatedUser();
+    EssayTaskRequest request = buildGradeRequest("req_grade_repair");
+    when(membershipService.reserveEssayAccess(user))
+        .thenReturn(MembershipService.UsageReservation.trial(user.userId(), List.of("ESSAY_TOTAL")));
+    when(aiGatewayService.requestJsonText(anyString(), anyString()))
+        .thenReturn("{\"content\":\"缺少批改字段\"}", validRepairedGradeJson());
+
+    EssayService.EssayExecution first = essayService.execute(user, request);
+    EssayService.EssayExecution second = essayService.execute(user, request);
+
+    AppState.SentenceDiagnosis diagnosis = second.getRecord().analysis.sentenceDiagnostics.get(0);
+    assertEquals(first.getRecord().id, second.getRecord().id);
+    assertEquals("EXPRESSION_UPGRADE", diagnosis.kind);
+    assertEquals("NONE", diagnosis.errorType);
+    assertEquals(false, diagnosis.legacyInferred);
+    verify(membershipService, times(1)).reserveEssayAccess(user);
+    verify(aiGatewayService, times(2)).requestJsonText(anyString(), anyString());
+
+    ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+    verify(aiGatewayService, times(2)).requestJsonText(anyString(), promptCaptor.capture());
+    String repairPrompt = promptCaptor.getAllValues().get(1);
+    assertTrue(repairPrompt.contains("EXPRESSION_UPGRADE"));
+    assertTrue(repairPrompt.contains("NONE"));
+    assertTrue(repairPrompt.contains("正确句子不能标为错误"));
+  }
+
+  @Test
+  void shouldMoveInvalidSentenceCorrectionToContentDiagnosis() {
+    MembershipService membershipService = Mockito.mock(MembershipService.class);
+    ContentSafetyService contentSafetyService = Mockito.mock(ContentSafetyService.class);
+    AiGatewayService aiGatewayService = Mockito.mock(AiGatewayService.class);
+    CoachKnowledgeBaseService coachKnowledgeBaseService = Mockito.mock(CoachKnowledgeBaseService.class);
+    StudyProfileService studyProfileService = Mockito.mock(StudyProfileService.class);
+    HistoryService historyService = new HistoryService(new InMemoryEssayRecordRepository());
+    EssayService essayService = new EssayService(
+        membershipService,
+        contentSafetyService,
+        historyService,
+        aiGatewayService,
+        coachKnowledgeBaseService,
+        studyProfileService,
+        new ObjectMapper()
+    );
+
+    AuthenticatedUser user = authenticatedUser();
+    EssayTaskRequest request = buildGradeRequest("req_invalid_sentence_pair");
+    when(membershipService.reserveEssayAccess(user))
+        .thenReturn(MembershipService.UsageReservation.trial(user.userId(), List.of("ESSAY_TOTAL")));
+    when(aiGatewayService.requestJsonText(anyString(), anyString()))
+        .thenReturn(invalidSentencePairGradeJson());
+
+    AppState.GradeAnalysis analysis = essayService.execute(user, request).getRecord().analysis;
+
+    assertEquals(0, analysis.sentenceDiagnostics.size());
+    assertTrue(analysis.contentDiagnosis.contains("文章基本切题"));
+    assertTrue(analysis.contentDiagnosis.contains("补充活动中的具体任务和收获"));
   }
 
   @Test
@@ -188,6 +266,19 @@ class EssayServiceIdempotencyTest {
     return request;
   }
 
+  private EssayTaskRequest buildGradeRequest(String clientRequestId) {
+    EssayTaskRequest request = new EssayTaskRequest();
+    request.setClientRequestId(clientRequestId);
+    request.setMode("grade");
+    request.setEssayType("application");
+    request.setBand("band2");
+    request.setBandValue("学霸");
+    request.setTaskContent("假定你是李华，请给外教写邮件。");
+    request.setDraftText("I am very happy to write to you.");
+    request.setRequirements("语气自然");
+    return request;
+  }
+
   private CoachKnowledgeBaseService.CoachGuidance buildCoachGuidance() {
     AppState.CoachPlan plan = new AppState.CoachPlan();
     plan.stage = "prewrite";
@@ -247,6 +338,78 @@ class EssayServiceIdempotencyTest {
             "mustInclude":["建议配图","自荐画图"],
             "riskPoints":["漏掉自荐","语气过硬"],
             "suggestedExpressions":["I'd like to","I can help with"]
+          }
+        }
+        """;
+  }
+
+  private String validRepairedGradeJson() {
+    return """
+        {
+          "content":"### 批改报告",
+          "wordCount":8,
+          "scoreText":"11分 / 15",
+          "analysis":{
+            "typeJudgment":"应用文",
+            "wordCountRisk":"字数适中",
+            "alignmentDiagnosis":"切题",
+            "machineRiskDiagnosis":"无明显机器感",
+            "contentDiagnosis":"要点完整",
+            "structureDiagnosis":"结构清楚",
+            "languageFitnessDiagnosis":"表达基本正确",
+            "languageDiagnosis":"表达基本正确",
+            "flowDiagnosis":"衔接自然",
+            "highlightDiagnosis":"语气得体",
+            "lossPointDiagnosis":"无硬性错误",
+            "overallComment":"表达可更自然",
+            "sentenceDiagnostics":[{
+              "kind":"EXPRESSION_UPGRADE",
+              "errorType":"GRAMMAR",
+              "original":"I am very happy to write to you.",
+              "diagnosis":"表达可以更自然",
+              "revision":"I am delighted to write to you."
+            }],
+            "scoreDimensions":[
+              {"code":"content","label":"内容","score":4,"maxScore":5},
+              {"code":"language","label":"语言","score":4,"maxScore":5},
+              {"code":"structure","label":"结构","score":2,"maxScore":3},
+              {"code":"vocabulary","label":"词汇","score":1,"maxScore":2}
+            ],
+            "secondDraftGuidance":"保持原意",
+            "improvedEssay":"I am delighted to write to you.",
+            "weaknessProfile":{"headline":"","nextFocus":"","sampleSize":1,"tags":[]}
+          }
+        }
+        """;
+  }
+
+  private String invalidSentencePairGradeJson() {
+    return """
+        {
+          "content":"### 批改报告",
+          "wordCount":8,
+          "scoreText":"11分 / 15",
+          "analysis":{
+            "typeJudgment":"应用文",
+            "wordCountRisk":"字数适中",
+            "contentDiagnosis":"文章基本切题。",
+            "languageDiagnosis":"表达基本正确",
+            "machineRiskDiagnosis":"无明显机器感",
+            "overallComment":"内容需要更具体",
+            "sentenceDiagnostics":[{
+              "kind":"ERROR_CORRECTION",
+              "errorType":"CONTENT",
+              "original":"",
+              "diagnosis":"补充活动中的具体任务和收获。",
+              "revision":"增加团队合作和所学技能。"
+            }],
+            "scoreDimensions":[
+              {"code":"content","label":"内容","score":4,"maxScore":5},
+              {"code":"language","label":"语言","score":4,"maxScore":5},
+              {"code":"structure","label":"结构","score":2,"maxScore":3},
+              {"code":"vocabulary","label":"词汇","score":1,"maxScore":2}
+            ],
+            "improvedEssay":"I am delighted to write to you."
           }
         }
         """;

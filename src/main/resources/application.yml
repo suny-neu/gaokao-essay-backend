@@ -16,7 +16,7 @@ management:
 gaokao:
   auth-token-secret: ${GAOKAO_AUTH_TOKEN_SECRET:change-me-local-secret}
   auth-token-expire-seconds: ${GAOKAO_AUTH_TOKEN_EXPIRE_SECONDS:604800}
-  trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:${GAOKAO_TRIAL_DAILY_LIMIT:5}}
+  trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:0}
   local-auth-fallback-enabled: ${GAOKAO_LOCAL_AUTH_FALLBACK_ENABLED:false}
   request-open-id-fallback-enabled: ${GAOKAO_REQUEST_OPENID_FALLBACK_ENABLED:false}
   billing-debug-enabled: ${GAOKAO_BILLING_DEBUG_ENABLED:false}
@@ -74,16 +74,18 @@ gaokao:
     tencent-version: ${GAOKAO_OCR_TENCENT_VERSION:2018-11-19}
     tencent-language-type: ${GAOKAO_OCR_TENCENT_LANGUAGE_TYPE:zh}
   membership:
-    trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:${GAOKAO_TRIAL_DAILY_LIMIT:5}}
-    trial-daily-limit: ${GAOKAO_TRIAL_DAILY_LIMIT:2}
+    trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:0}
+    trial-daily-limit: ${GAOKAO_TRIAL_DAILY_LIMIT:5}
     device-daily-limit: ${GAOKAO_DEVICE_DAILY_LIMIT:4}
     ip-daily-limit: ${GAOKAO_IP_DAILY_LIMIT:20}
     quota-zone-id: ${GAOKAO_QUOTA_ZONE_ID:Asia/Shanghai}
     allow-debug-subscription-activate: ${GAOKAO_BILLING_DEBUG_ENABLED:true}
     ad-reward:
       enabled: ${GAOKAO_AD_REWARD_ENABLED:true}
-      grant-per-view: ${GAOKAO_AD_REWARD_GRANT_PER_VIEW:1}
-      daily-max: ${GAOKAO_AD_REWARD_DAILY_MAX:10}
+      credit-per-view: ${GAOKAO_AD_REWARD_CREDIT_PER_VIEW:${GAOKAO_AD_REWARD_GRANT_PER_VIEW:1}}
+      daily-limit: ${GAOKAO_AD_REWARD_DAILY_LIMIT:${GAOKAO_AD_REWARD_DAILY_MAX:5}}
+      claim-not-before-seconds: ${GAOKAO_AD_REWARD_CLAIM_NOT_BEFORE_SECONDS:3}
+      claim-ttl-seconds: ${GAOKAO_AD_REWARD_CLAIM_TTL_SECONDS:600}
       cooldown-seconds: ${GAOKAO_AD_REWARD_COOLDOWN_SECONDS:30}
       max-credits: ${GAOKAO_AD_REWARD_MAX_CREDITS:50}
     monthly:
@@ -93,13 +95,21 @@ gaokao:
       duration-days: 30
       price-fen: 3900
       recommended: false
-    yearly:
-      code: yearly
+    annual:
+      code: annual
       name: 包年会员
       description: 365 天不限次，更适合长期备考
       duration-days: 365
       price-fen: 29900
       recommended: true
+    founder-lifetime:
+      code: founder_lifetime
+      name: 创始终身会员
+      description: 终身不限量作文生成与严格批改
+      duration-days: 0
+      price-fen: 59900
+      lifetime: true
+      recommended: false
   payment:
     enabled: ${GAOKAO_PAYMENT_ENABLED:false}
     notify-url: ${GAOKAO_PAYMENT_NOTIFY_URL:}
