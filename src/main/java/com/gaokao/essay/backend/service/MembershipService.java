@@ -75,12 +75,26 @@ public class MembershipService {
     }
 
     List<String> consumedQuotaTypes = new ArrayList<>();
-    int dailyLimit = resolveTrialDailyLimit();
-    if (!tryConsumeTrialQuota(user.userId(), buildDailyTrialQuotaType(now), dailyLimit, consumedQuotaTypes)) {
+    int totalLimit = resolveTrialTotalLimit();
+    if (totalLimit > 0
+        && !tryConsumeTrialQuota(user.userId(), buildTotalTrialQuotaType(), totalLimit, consumedQuotaTypes)) {
       if (tryConsumeAdRewardCredit(user.userId(), consumedQuotaTypes)) {
         return finalizeAdRewardReservation(user, deviceId, clientIp, consumedQuotaTypes, now);
       }
-      throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TRIAL_DAILY_LIMIT_REACHED", "今日免费体验次数已用完，看广告可继续获得批改次数");
+      throw new ApiException(
+          HttpStatus.TOO_MANY_REQUESTS,
+          "TRIAL_TOTAL_LIMIT_REACHED",
+          "免费试用额度已用完，明天不再自动恢复，请开通会员继续"
+      );
+    }
+
+    int dailyLimit = resolveTrialDailyLimit();
+    if (!tryConsumeTrialQuota(user.userId(), buildDailyTrialQuotaType(now), dailyLimit, consumedQuotaTypes)) {
+      rollbackConsumedQuotas(user.userId(), consumedQuotaTypes);
+      if (tryConsumeAdRewardCredit(user.userId(), consumedQuotaTypes)) {
+        return finalizeAdRewardReservation(user, deviceId, clientIp, consumedQuotaTypes, now);
+      }
+      throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TRIAL_DAILY_LIMIT_REACHED", "今日免费体验次数已用完，明天恢复");
     }
 
     List<String> abuseKeys = new ArrayList<>();

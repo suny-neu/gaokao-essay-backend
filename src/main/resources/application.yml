@@ -16,7 +16,7 @@ management:
 gaokao:
   auth-token-secret: ${GAOKAO_AUTH_TOKEN_SECRET:change-me-local-secret}
   auth-token-expire-seconds: ${GAOKAO_AUTH_TOKEN_EXPIRE_SECONDS:604800}
-  trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:0}
+  trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:45}
   local-auth-fallback-enabled: ${GAOKAO_LOCAL_AUTH_FALLBACK_ENABLED:false}
   request-open-id-fallback-enabled: ${GAOKAO_REQUEST_OPENID_FALLBACK_ENABLED:false}
   billing-debug-enabled: ${GAOKAO_BILLING_DEBUG_ENABLED:false}
@@ -74,8 +74,8 @@ gaokao:
     tencent-version: ${GAOKAO_OCR_TENCENT_VERSION:2018-11-19}
     tencent-language-type: ${GAOKAO_OCR_TENCENT_LANGUAGE_TYPE:zh}
   membership:
-    trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:0}
-    trial-daily-limit: ${GAOKAO_TRIAL_DAILY_LIMIT:5}
+    trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:45}
+    trial-daily-limit: ${GAOKAO_TRIAL_DAILY_LIMIT:3}
     device-daily-limit: ${GAOKAO_DEVICE_DAILY_LIMIT:5}
     ip-daily-limit: ${GAOKAO_IP_DAILY_LIMIT:20}
     quota-zone-id: ${GAOKAO_QUOTA_ZONE_ID:Asia/Shanghai}

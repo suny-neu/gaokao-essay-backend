@@ -131,6 +131,28 @@ class MembershipServiceTrialLimitTest {
   }
 
   @Test
+  void shouldEnforceTotalTrialLimitAlongsideDailyLimit() {
+    GaokaoProperties properties = new GaokaoProperties();
+    properties.getMembership().setTrialTotalLimit(4);
+    properties.getMembership().setTrialDailyLimit(3);
+    properties.getMembership().setDeviceDailyLimit(0);
+    properties.getMembership().setIpDailyLimit(0);
+
+    InMemoryQuotaRepository quotaRepository = new InMemoryQuotaRepository();
+    MembershipService firstDay = serviceAt(properties, quotaRepository, Instant.parse("2026-07-10T10:00:00Z"));
+    for (int attempt = 0; attempt < 3; attempt += 1) {
+      assertDoesNotThrow(() -> firstDay.reserveEssayAccess(user()));
+    }
+
+    MembershipService secondDay = serviceAt(properties, quotaRepository, Instant.parse("2026-07-11T10:00:00Z"));
+    assertDoesNotThrow(() -> secondDay.reserveEssayAccess(user()));
+    ApiException error = assertThrows(ApiException.class, () -> secondDay.reserveEssayAccess(user()));
+
+    assertEquals("TRIAL_TOTAL_LIMIT_REACHED", error.getCode());
+    assertEquals(4, quotaRepository.findByUserIdAndQuotaType("user_1", "ESSAY_TOTAL").orElseThrow().usedCount());
+  }
+
+  @Test
   void shouldResetDailyFreeReservationsOnTheNextShanghaiDay() {
     GaokaoProperties properties = new GaokaoProperties();
     properties.getMembership().setTrialTotalLimit(0);

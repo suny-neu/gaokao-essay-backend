@@ -557,8 +557,8 @@ public class GaokaoProperties {
   }
 
   public static class Membership {
-    private int trialTotalLimit;
-    private int trialDailyLimit = 5;
+    private int trialTotalLimit = 45;
+    private int trialDailyLimit = 3;
     private int deviceDailyLimit = 4;
     private int ipDailyLimit = 20;
     private String quotaZoneId = "Asia/Shanghai";
