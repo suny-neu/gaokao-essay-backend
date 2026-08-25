@@ -35,7 +35,7 @@ public class GrowthProfileService {
   );
 
   private static final Set<String> TRUSTED_ERROR_TYPES = Set.of(
-      "GRAMMAR", "SPELLING", "WORD_CHOICE", "PUNCTUATION", "CONTENT"
+      "GRAMMAR", "TENSE", "ARTICLE", "SPELLING", "WORD_CHOICE", "PUNCTUATION", "CONTENT"
   );
 
   private final EssayRecordRepository essayRecordRepository;
@@ -366,6 +366,8 @@ public class GrowthProfileService {
   private String growthErrorEvidence(AppState.SentenceDiagnosis diagnosis) {
     return switch (diagnosis.errorType) {
       case "GRAMMAR" -> "语法";
+      case "TENSE" -> "时态";
+      case "ARTICLE" -> "冠词";
       case "SPELLING" -> "拼写";
       case "WORD_CHOICE" -> "搭配";
       case "PUNCTUATION" -> "标点";

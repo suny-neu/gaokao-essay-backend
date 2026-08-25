@@ -76,7 +76,7 @@ gaokao:
   membership:
     trial-total-limit: ${GAOKAO_TRIAL_TOTAL_LIMIT:0}
     trial-daily-limit: ${GAOKAO_TRIAL_DAILY_LIMIT:5}
-    device-daily-limit: ${GAOKAO_DEVICE_DAILY_LIMIT:4}
+    device-daily-limit: ${GAOKAO_DEVICE_DAILY_LIMIT:5}
     ip-daily-limit: ${GAOKAO_IP_DAILY_LIMIT:20}
     quota-zone-id: ${GAOKAO_QUOTA_ZONE_ID:Asia/Shanghai}
     allow-debug-subscription-activate: ${GAOKAO_BILLING_DEBUG_ENABLED:true}

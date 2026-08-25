@@ -15,6 +15,14 @@ class SentenceDiagnosisClassifierTest {
   }
 
   @Test
+  void preservesSpecificTenseAndArticleErrorTypes() {
+    assertThat(classifier.normalize("ERROR_CORRECTION", "TENSE", "故事叙述应使用一般过去时").errorType())
+        .isEqualTo("TENSE");
+    assertThat(classifier.normalize("ERROR_CORRECTION", "ARTICLE", "缺少不定冠词").errorType())
+        .isEqualTo("ARTICLE");
+  }
+
+  @Test
   void expressionUpgradeCannotCarryAnErrorType() {
     assertThat(classifier.normalize("EXPRESSION_UPGRADE", "GRAMMAR", "更自然").errorType())
         .isEqualTo("NONE");

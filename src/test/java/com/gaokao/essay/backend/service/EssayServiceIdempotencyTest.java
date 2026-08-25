@@ -139,10 +139,23 @@ class EssayServiceIdempotencyTest {
 
     ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
     verify(aiGatewayService, times(2)).requestJsonText(anyString(), promptCaptor.capture());
+    String initialPrompt = promptCaptor.getAllValues().get(0);
     String repairPrompt = promptCaptor.getAllValues().get(1);
+    assertTrue(initialPrompt.contains("重复单调"));
+    assertTrue(initialPrompt.contains("简单句堆砌"));
+    assertTrue(initialPrompt.contains("中式英语"));
+    assertTrue(initialPrompt.contains("实际词数"));
+    assertTrue(initialPrompt.contains("所有高置信度真实错误"));
+    assertTrue(initialPrompt.contains("TENSE"));
     assertTrue(repairPrompt.contains("EXPRESSION_UPGRADE"));
     assertTrue(repairPrompt.contains("NONE"));
     assertTrue(repairPrompt.contains("正确句子不能标为错误"));
+    assertTrue(repairPrompt.contains("重复单调"));
+    assertTrue(repairPrompt.contains("简单句堆砌"));
+    assertTrue(repairPrompt.contains("中式英语"));
+    assertTrue(repairPrompt.contains("实际词数"));
+    assertTrue(repairPrompt.contains("所有高置信度真实错误"));
+    assertTrue(repairPrompt.contains("TENSE"));
   }
 
   @Test

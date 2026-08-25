@@ -9,7 +9,7 @@ public class SentenceDiagnosisClassifier {
   private static final String EXPRESSION_UPGRADE = "EXPRESSION_UPGRADE";
   private static final String NONE = "NONE";
   private static final Set<String> ERROR_TYPES = Set.of(
-      "GRAMMAR", "SPELLING", "WORD_CHOICE", "PUNCTUATION", "CONTENT"
+      "GRAMMAR", "TENSE", "ARTICLE", "SPELLING", "WORD_CHOICE", "PUNCTUATION", "CONTENT"
   );
 
   public Classification normalize(String kind, String errorType, String diagnosis) {

@@ -416,11 +416,13 @@ public class EssayService {
     lines.add("sentenceDiagnostics 的每条都必须包含 kind、errorType、original、diagnosis、revision。");
     lines.add("kind 只能为 ERROR_CORRECTION 或 EXPRESSION_UPGRADE。正确句子不能标为错误；"
         + "语法正确但只是更自然、更正式或更有表现力时，必须标为 EXPRESSION_UPGRADE。");
-    lines.add("ERROR_CORRECTION 的 errorType 只能为 GRAMMAR、SPELLING、WORD_CHOICE、PUNCTUATION 或 CONTENT；"
+    lines.add("ERROR_CORRECTION 的 errorType 只能为 GRAMMAR、TENSE、ARTICLE、SPELLING、WORD_CHOICE、PUNCTUATION 或 CONTENT；"
         + "EXPRESSION_UPGRADE 必须使用 NONE，且不计入错误数量或错误类成长档案。");
     lines.add("ERROR_CORRECTION 只有在 original 和 revision 都是可核对的完整英文句子时才允许保留；"
         + "缺少任一英文句子或字段内容为中文时，必须改写到 contentDiagnosis，不能作为逐句错误。");
-    lines.add("逐句诊断只保留 2 到 3 条典型项，两种 kind 都可以出现；不要为了增加建议数量把正确句子描述成错误。");
+    lines.add("逐句诊断必须覆盖所有高置信度真实错误，不再固定只给 2 到 3 条；应用文最多列 8 条，读后续写最多列 12 条。"
+        + "超过上限时，必须在 languageDiagnosis 中说明剩余错误数量和代表性原句；不要为了增加建议数量把正确句子描述成错误。");
+    addGradeQualityChecklist(lines, request.getEssayType());
     lines.add("如果原始输出缺少某些槽位，请根据原始内容和学生原文补齐，但不要另起炉灶。");
     lines.add("scoreDimensions 固定为内容5分、语言5分、结构3分、词汇2分，四项 score 之和必须与 scoreText 总分完全一致。");
     lines.add("原始输出：\n" + rawResponse);
@@ -759,10 +761,10 @@ public class EssayService {
         + "\"headline\":\"...\",\"nextFocus\":\"...\",\"sampleSize\":1,\"tags\":[{\"code\":\"show\",\"label\":\"Show 不足\",\"hitCount\":1}]}}}"
         + "。scoreDimensions 固定为内容5分、语言5分、结构3分、词汇2分，四项 score 之和必须与 scoreText 总分完全一致。"
         + "每条 sentenceDiagnostics 必须使用 kind 和 errorType：真实错误只能标 ERROR_CORRECTION，"
-        + "errorType 只能是 GRAMMAR、SPELLING、WORD_CHOICE、PUNCTUATION 或 CONTENT；原句正确、"
+        + "errorType 只能是 GRAMMAR、TENSE、ARTICLE、SPELLING、WORD_CHOICE、PUNCTUATION 或 CONTENT；原句正确、"
         + "仅为更自然/正式/有表现力的修改必须标 EXPRESSION_UPGRADE 且 errorType 为 NONE。"
         + "ERROR_CORRECTION 的 original 和 revision 必须都是完整英文句子；缺少英文对照或内容为中文时，"
-        + "必须写入 contentDiagnosis，不能作为逐句错误。不得把正确句子标为错误；表达升级不得降低错误评分或计入错误。逐句诊断只给 2 到 3 条典型项，"
+        + "必须写入 contentDiagnosis，不能作为逐句错误。不得把正确句子标为错误；表达升级不得降低错误评分或计入错误。逐句诊断必须覆盖所有高置信度真实错误，"
         + "其中可包含任一种 kind。";
   }
 
@@ -800,12 +802,13 @@ public class EssayService {
       lines.add("5. 必须严格按四个固定部分完成批改：第一步硬性指标初筛；第二步分项诊断与保守估分；第三步逐句无情诊断；第四步高分级整篇修改稿。");
       lines.add("6. 第一步必须覆盖：题型判断、字数核查、切题与结构初筛、模板感与机器感筛查。");
       lines.add("7. 第二步必须单独给出：题型判断、字数与档位风险、要点覆盖与协同性、词汇与语法得体度、隐性衔接与呼吸感、模板感 / 机器感风险、保守估分、一句总评。");
-      lines.add("8. 第三步必须挑出 2 到 3 句最典型失分句，分别给出原句、诊断、提分改法。");
-      lines.add("9. 每条逐句诊断必须包含 kind 和 errorType。真实错误使用 ERROR_CORRECTION，errorType 只能是 GRAMMAR、SPELLING、WORD_CHOICE、PUNCTUATION 或 CONTENT；原句正确但可更自然的表达升级使用 EXPRESSION_UPGRADE 和 NONE。ERROR_CORRECTION 的 original 和 revision 必须都是完整英文句子；缺少任一英文句子或内容为中文时，必须写入 contentDiagnosis，不能作为逐句错误。不得为了增加建议把正确句子标为错误；表达升级不得降低错误评分或计入错误。");
+      lines.add("8. 第三步必须列出所有高置信度真实错误，应用文最多 8 条，读后续写最多 12 条；每条给出原句、准确诊断和提分改法。");
+      lines.add("9. 每条逐句诊断必须包含 kind 和 errorType。真实错误使用 ERROR_CORRECTION，errorType 只能是 GRAMMAR、TENSE、ARTICLE、SPELLING、WORD_CHOICE、PUNCTUATION 或 CONTENT；原句正确但可更自然的表达升级使用 EXPRESSION_UPGRADE 和 NONE。ERROR_CORRECTION 的 original 和 revision 必须都是完整英文句子；缺少任一英文句子或内容为中文时，必须写入 contentDiagnosis，不能作为逐句错误。不得为了增加建议把正确句子标为错误；表达升级不得降低错误评分或计入错误。");
       lines.add("10. 所有判断都必须基于学生作文里的具体文本证据。不要直接说 AI 写的，只能说存在明显模板化 / 机器感风险，并说明证据。");
       lines.add("11. 整篇提分稿默认保留学生原有核心意思、结构和情节，不要大幅魔改。");
       lines.add("12. 如果是读后续写但原文材料或两段段首句不完整，必须明确说明只能做有限诊断。");
       lines.add("13. 批改时要指出内容、结构、语言、亮点、失分点，并给二稿提升建议和整篇提分稿。");
+      addGradeQualityChecklist(lines, request.getEssayType());
     } else {
       lines.add("4. 陪练时要严格贴合知识库骨架，输出可直接下笔的中文指导，不要直接代写整篇范文。");
       lines.add("5. 先判断用户所处阶段是写前、写中还是写后，再按当前陪练模式给最轻最有用的指导。");
@@ -827,6 +830,24 @@ public class EssayService {
       lines.add(knowledgeContext);
     }
     return String.join("\n\n", lines);
+  }
+
+  private void addGradeQualityChecklist(List<String> lines, String essayType) {
+    lines.add("硬性质量检查：不能只在第四步提分稿里悄悄修改，必须在第二步或对应诊断字段明确反馈。"
+        + "先按题目要求统计英文词数，明确实际词数和是否达到要求；题目没有给出明确词数要求时，不要自行编造硬性标准。"
+        + "检查词汇是否重复单调，尤其是 very 等简单词的重复（如 very good / very interesting / very fun），存在时指出原文证据并给出符合语境的替代表达；"
+        + "检查是否大量简单句堆砌、缺少必要的因果、转折、定语从句或并列衔接，存在时在结构或语言诊断中说明，不要为了凑高级词机械添加连接词。"
+        + "检查中式英语、直译和冗余表达（例如 make you calm down and relax、learn Chinese culture），说明具体问题和更地道的改法。"
+        + "检查结构判断必须尊重原文证据：已有个人偏好或行动安排时，只能指出表达偏弱或不够具体，不能说成完全缺失。"
+        + "真实语法、拼写、用词或内容错误才进入 ERROR_CORRECTION；语法正确但词汇重复、句式单调或表达不够自然，进入 EXPRESSION_UPGRADE 或整体诊断。"
+        + "凡是无法提供完整英文原句和英文修改句的整体问题，必须写入 contentDiagnosis、languageFitnessDiagnosis 或 flowDiagnosis，不能只在 improvedEssay 中体现。"
+        + "没有发现某一类问题时，也要明确写未发现明显问题。");
+    if ("continuation".equalsIgnoreCase(TextUtils.trimToEmpty(essayType))) {
+      lines.add("读后续写专项：故事叙述默认检查一般过去时的一致性。逐句核对两段中每个有时态变化的谓语，包括并列谓语、be 动词、规则和不规则动词；"
+          + "hear→heard、go→went、hug→hugged、say→said、tell→told、read→read、cry→cried、love→loved、eat→ate、help→helped、know→knew 等都要结合语境核对。"
+          + "时态错误必须使用 errorType=TENSE，冠词缺失或误用使用 errorType=ARTICLE；不要把故事时态错误解释成主谓一致，除非确实是主语和谓语数的一致问题。"
+          + "若同一段连续出现多个时态错误，必须逐处列出，不能只挑前两处。结构完整但内容单薄时，应扣内容或细节，不要误判为结构缺失。");
+    }
   }
 
   private boolean hasText(JsonNode node, String fieldName) {
