@@ -1,3 +1,5 @@
+log_format api_timing '$remote_addr [$time_local] "$request" status=$status total=$request_time upstream=$upstream_response_time';
+
 server {
     listen 80;
     server_name ${API_DOMAIN};
@@ -23,6 +25,7 @@ server {
     ssl_prefer_server_ciphers off;
 
     client_max_body_size 15m;
+    access_log /var/log/nginx/api-timing.log api_timing;
 
     location / {
         proxy_pass http://backend:8080;
