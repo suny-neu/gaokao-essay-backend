@@ -55,14 +55,7 @@ public class DashboardService {
 
   public Map<String, Object> build(AuthenticatedUser user, String requestedEssayType) {
     String essayType = normalizeEssayType(requestedEssayType);
-    List<AppState.EssayRecord> records = essayRecordRepository.findRecentByUserId(
-        user.userId(),
-        0,
-        100,
-        null,
-        null,
-        "SUCCESS"
-    );
+    List<AppState.EssayRecord> records = essayRecordRepository.findRecentDashboardByUserId(user.userId());
     GrowthProfile growth = growthProfileService.buildFromRecords(records, essayType);
 
     Map<String, Object> data = new LinkedHashMap<>();

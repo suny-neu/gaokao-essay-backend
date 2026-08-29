@@ -31,12 +31,13 @@ class DashboardServiceTest {
   @Test
   void reusesDashboardRecordsWhenBuildingGrowthProfile() {
     List<AppState.EssayRecord> records = List.of(record("grade", "application", "12分 / 15"));
-    when(essayRecordRepository.findRecentByUserId("user-1", 0, 100, null, null, "SUCCESS"))
+    when(essayRecordRepository.findRecentDashboardByUserId("user-1"))
         .thenReturn(records);
 
     service.build(user(), "application");
 
-    verify(essayRecordRepository).findRecentByUserId("user-1", 0, 100, null, null, "SUCCESS");
+    verify(essayRecordRepository).findRecentDashboardByUserId("user-1");
+    verify(essayRecordRepository, never()).findRecentByUserId(any(), Mockito.anyInt(), Mockito.anyInt(), any(), any(), any());
     verify(growthProfileService).buildFromRecords(records, "application");
     verify(growthProfileService, never()).load(any(), eq("application"));
   }

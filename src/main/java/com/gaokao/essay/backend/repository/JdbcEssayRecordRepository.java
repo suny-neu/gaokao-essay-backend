@@ -27,6 +27,11 @@ public class JdbcEssayRecordRepository implements EssayRecordRepository {
       FROM essay_record
       """;
 
+  private static final String DASHBOARD_SELECT_COLUMNS = """
+      SELECT id, mode, essay_type, created_at, score_text, task_status, analysis_json
+      FROM essay_record
+      """;
+
   private final JdbcTemplate jdbcTemplate;
   private final ObjectMapper objectMapper;
 
@@ -99,6 +104,17 @@ public class JdbcEssayRecordRepository implements EssayRecordRepository {
   }
 
   @Override
+  public List<AppState.EssayRecord> findRecentDashboardByUserId(String userId) {
+    return jdbcTemplate.query(
+        DASHBOARD_SELECT_COLUMNS + " WHERE user_id = ? AND task_status = ? ORDER BY created_at DESC LIMIT ?",
+        dashboardRowMapper(),
+        userId,
+        "SUCCESS",
+        100
+    );
+  }
+
+  @Override
   public Optional<AppState.EssayRecord> findByIdAndUserId(String id, String userId) {
     List<AppState.EssayRecord> results = jdbcTemplate.query(
         SELECT_COLUMNS + " WHERE id = ? AND user_id = ? LIMIT 1",
@@ -154,6 +170,10 @@ public class JdbcEssayRecordRepository implements EssayRecordRepository {
 
   private RowMapper<AppState.EssayRecord> rowMapper() {
     return (resultSet, rowNum) -> mapRow(resultSet);
+  }
+
+  private RowMapper<AppState.EssayRecord> dashboardRowMapper() {
+    return (resultSet, rowNum) -> mapDashboardRow(resultSet);
   }
 
   private int updateRecord(AppState.EssayRecord record) {
@@ -239,6 +259,18 @@ public class JdbcEssayRecordRepository implements EssayRecordRepository {
     record.taskStatus = resultSet.getString("task_status");
     record.promptSnapshot = readJson(resultSet.getString("prompt_snapshot_json"), AppState.PromptSnapshot.class, new AppState.PromptSnapshot());
     record.coachPlan = readJson(resultSet.getString("coach_plan_json"), AppState.CoachPlan.class, null);
+    record.analysis = readJson(resultSet.getString("analysis_json"), AppState.GradeAnalysis.class, null);
+    return record;
+  }
+
+  private AppState.EssayRecord mapDashboardRow(ResultSet resultSet) throws SQLException {
+    AppState.EssayRecord record = new AppState.EssayRecord();
+    record.id = resultSet.getString("id");
+    record.mode = resultSet.getString("mode");
+    record.essayType = resultSet.getString("essay_type");
+    record.createdAt = resultSet.getLong("created_at");
+    record.scoreText = resultSet.getString("score_text");
+    record.taskStatus = resultSet.getString("task_status");
     record.analysis = readJson(resultSet.getString("analysis_json"), AppState.GradeAnalysis.class, null);
     return record;
   }

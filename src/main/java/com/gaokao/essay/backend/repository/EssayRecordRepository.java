@@ -19,6 +19,10 @@ public interface EssayRecordRepository {
       String taskStatus
   );
 
+  default List<AppState.EssayRecord> findRecentDashboardByUserId(String userId) {
+    return findRecentByUserId(userId, 0, 100, null, null, "SUCCESS");
+  }
+
   Optional<AppState.EssayRecord> findByIdAndUserId(String id, String userId);
 
   Optional<AppState.EssayRecord> findByUserIdAndClientRequestId(String userId, String clientRequestId);
