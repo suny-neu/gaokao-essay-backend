@@ -63,7 +63,7 @@ public class DashboardService {
         null,
         "SUCCESS"
     );
-    GrowthProfile growth = growthProfileService.load(user.userId(), essayType);
+    GrowthProfile growth = growthProfileService.buildFromRecords(records, essayType);
 
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("essayType", essayType);

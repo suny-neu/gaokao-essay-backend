@@ -45,15 +45,19 @@ public class GrowthProfileService {
   }
 
   public GrowthProfile load(String userId, String requestedEssayType) {
-    String activeEssayType = normalizeEssayType(requestedEssayType);
-    List<AppState.EssayRecord> records = essayRecordRepository.findRecentByUserId(
+    return buildFromRecords(essayRecordRepository.findRecentByUserId(
         userId,
         0,
         50,
         "grade",
         null,
         "SUCCESS"
-    ).stream()
+    ), requestedEssayType);
+  }
+
+  GrowthProfile buildFromRecords(List<AppState.EssayRecord> sourceRecords, String requestedEssayType) {
+    String activeEssayType = normalizeEssayType(requestedEssayType);
+    List<AppState.EssayRecord> records = (sourceRecords == null ? List.<AppState.EssayRecord>of() : sourceRecords).stream()
         .filter(Objects::nonNull)
         .filter(item -> "grade".equalsIgnoreCase(item.mode))
         .filter(item -> "SUCCESS".equalsIgnoreCase(item.taskStatus))
