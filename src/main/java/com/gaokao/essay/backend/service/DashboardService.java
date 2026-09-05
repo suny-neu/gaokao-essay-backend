@@ -19,10 +19,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class DashboardService {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(DashboardService.class);
   private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
   private static final Pattern SCORE_PATTERN =
       Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*(?:分)?\\s*/\\s*(\\d+(?:\\.\\d+)?)");
@@ -54,18 +57,36 @@ public class DashboardService {
   }
 
   public Map<String, Object> build(AuthenticatedUser user, String requestedEssayType) {
+    long startedAt = System.nanoTime();
     String essayType = normalizeEssayType(requestedEssayType);
     List<AppState.EssayRecord> records = essayRecordRepository.findRecentDashboardByUserId(user.userId());
+    long recordsCompletedAt = System.nanoTime();
     GrowthProfile growth = growthProfileService.buildFromRecords(records, essayType);
+    long growthCompletedAt = System.nanoTime();
 
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("essayType", essayType);
     data.put("generatedAt", clock.instant().toEpochMilli());
     data.put("entitlement", membershipService.getEntitlement(user));
+    long entitlementCompletedAt = System.nanoTime();
     data.put("growth", growth);
     data.put("weekly", buildWeeklyMetric(records, essayType));
     data.put("streak", buildStreak(records));
+    long completedAt = System.nanoTime();
+    LOGGER.info(
+        "Dashboard timing recordsMs={} growthMs={} entitlementMs={} metricsMs={} totalMs={} recordCount={}",
+        elapsedMillis(startedAt, recordsCompletedAt),
+        elapsedMillis(recordsCompletedAt, growthCompletedAt),
+        elapsedMillis(growthCompletedAt, entitlementCompletedAt),
+        elapsedMillis(entitlementCompletedAt, completedAt),
+        elapsedMillis(startedAt, completedAt),
+        records.size()
+    );
     return data;
+  }
+
+  private long elapsedMillis(long startedAt, long completedAt) {
+    return (completedAt - startedAt) / 1_000_000;
   }
 
   private Map<String, Object> buildWeeklyMetric(
