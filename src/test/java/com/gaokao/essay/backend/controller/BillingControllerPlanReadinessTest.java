@@ -45,6 +45,14 @@ class BillingControllerPlanReadinessTest {
         Mockito.mock(com.gaokao.essay.backend.repository.UserSubscriptionRepository.class),
         Mockito.mock(com.gaokao.essay.backend.security.AbuseProtectionStore.class)
     );
-    return new BillingController(membership, Mockito.mock(SessionService.class), payment);
+    return new BillingController(
+        membership,
+        Mockito.mock(SessionService.class),
+        payment,
+        new com.gaokao.essay.backend.service.RequestSecurityService(
+            new GaokaoProperties(),
+            Mockito.mock(com.gaokao.essay.backend.security.AbuseProtectionStore.class)
+        )
+    );
   }
 }

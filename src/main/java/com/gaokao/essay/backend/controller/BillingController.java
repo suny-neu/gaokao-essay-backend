@@ -26,15 +26,18 @@ public class BillingController {
   private final MembershipService membershipService;
   private final SessionService sessionService;
   private final WechatPayService wechatPayService;
+  private final com.gaokao.essay.backend.service.RequestSecurityService requestSecurityService;
 
   public BillingController(
       MembershipService membershipService,
       SessionService sessionService,
-      WechatPayService wechatPayService
+      WechatPayService wechatPayService,
+      com.gaokao.essay.backend.service.RequestSecurityService requestSecurityService
   ) {
     this.membershipService = membershipService;
     this.sessionService = sessionService;
     this.wechatPayService = wechatPayService;
+    this.requestSecurityService = requestSecurityService;
   }
 
   @GetMapping("/plans")
@@ -82,6 +85,7 @@ public class BillingController {
 
   @PostMapping("/wechat/notify")
   public ResponseEntity<?> handleWechatPaymentNotify(
+      HttpServletRequest servletRequest,
       @RequestHeader(value = "Wechatpay-Timestamp", required = false) String timestamp,
       @RequestHeader(value = "Wechatpay-Nonce", required = false) String nonce,
       @RequestHeader(value = "Wechatpay-Signature", required = false) String signature,
@@ -89,6 +93,7 @@ public class BillingController {
       @RequestBody(required = false) String body
   ) {
     try {
+      requestSecurityService.checkPaymentNotify(servletRequest);
       wechatPayService.handlePaymentNotification(timestamp, nonce, signature, serial, body == null ? "" : body);
       return ResponseEntity.noContent().build();
     } catch (Exception error) {

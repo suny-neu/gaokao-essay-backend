@@ -46,6 +46,9 @@ public class WechatPayService {
   private static final DateTimeFormatter OUT_TRADE_NO_TIME =
       DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneId.of("Asia/Shanghai"));
 
+  /** 待支付订单复用窗口：微信 prepay_id 建议 2 小时内使用，这里保守取 30 分钟。 */
+  private static final Duration PENDING_ORDER_REUSE_WINDOW = Duration.ofMinutes(30);
+
   private final GaokaoProperties properties;
   private final ObjectMapper objectMapper;
   private final PaymentOrderRepository paymentOrderRepository;
@@ -119,6 +122,19 @@ public class WechatPayService {
     membershipService.requirePurchaseAllowed(user, plan);
     ensurePaymentReady();
     Instant now = Instant.now();
+
+    // 复用 30 分钟内同套餐的待支付订单，避免用户重复点击产生多笔订单
+    java.util.Optional<PaymentOrder> reusable = paymentOrderRepository
+        .findLatestPendingByUserId(user.userId(), plan.getCode())
+        .filter(order -> "PREPAY_CREATED".equals(order.status()) && !TextUtils.isBlank(order.prepayId()))
+        .filter(order -> order.createdAt() != null
+            && order.createdAt().isAfter(now.minus(PENDING_ORDER_REUSE_WINDOW)));
+    if (reusable.isPresent()) {
+      Map<String, Object> reusedData = buildOrderResponse(reusable.get(), autoRenewRequested);
+      reusedData.put("reused", true);
+      return reusedData;
+    }
+
     String outTradeNo = buildOutTradeNo();
     String description = buildDescription(plan);
 
@@ -187,33 +203,37 @@ public class WechatPayService {
       );
       paymentOrderRepository.save(prepayOrder);
 
-      String packageValue = "prepay_id=" + prepayId;
-      String timeStamp = String.valueOf(Instant.now().getEpochSecond());
-      String nonceStr = buildNonce();
-      String paySign = signMiniAppPayParams(properties.getWechat().getAppId(), timeStamp, nonceStr, packageValue);
-
-      Map<String, Object> payParams = new LinkedHashMap<>();
-      payParams.put("timeStamp", timeStamp);
-      payParams.put("nonceStr", nonceStr);
-      payParams.put("package", packageValue);
-      payParams.put("signType", "RSA");
-      payParams.put("paySign", paySign);
-
-      Map<String, Object> data = new LinkedHashMap<>();
-      data.put("outTradeNo", prepayOrder.outTradeNo());
-      data.put("planCode", prepayOrder.planCode());
-      data.put("planName", prepayOrder.planName());
-      data.put("amountFen", prepayOrder.amountFen());
-      data.put("priceText", String.format("¥%.2f", prepayOrder.amountFen() / 100.0));
-      data.put("status", prepayOrder.status());
-      data.put("renewalMode", "manual");
-      data.put("autoRenewRequested", autoRenewRequested);
-      data.put("payParams", payParams);
-      data.put("serverTime", Instant.now().toString());
-      return data;
+      return buildOrderResponse(prepayOrder, autoRenewRequested);
     } catch (IOException error) {
       throw new ApiException(HttpStatus.BAD_GATEWAY, "WECHAT_PAY_PARSE_ERROR", "微信支付下单结果解析失败");
     }
+  }
+
+  private Map<String, Object> buildOrderResponse(PaymentOrder order, boolean autoRenewRequested) {
+    String packageValue = "prepay_id=" + order.prepayId();
+    String timeStamp = String.valueOf(Instant.now().getEpochSecond());
+    String nonceStr = buildNonce();
+    String paySign = signMiniAppPayParams(properties.getWechat().getAppId(), timeStamp, nonceStr, packageValue);
+
+    Map<String, Object> payParams = new LinkedHashMap<>();
+    payParams.put("timeStamp", timeStamp);
+    payParams.put("nonceStr", nonceStr);
+    payParams.put("package", packageValue);
+    payParams.put("signType", "RSA");
+    payParams.put("paySign", paySign);
+
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("outTradeNo", order.outTradeNo());
+    data.put("planCode", order.planCode());
+    data.put("planName", order.planName());
+    data.put("amountFen", order.amountFen());
+    data.put("priceText", String.format("¥%.2f", order.amountFen() / 100.0));
+    data.put("status", order.status());
+    data.put("renewalMode", "manual");
+    data.put("autoRenewRequested", autoRenewRequested);
+    data.put("payParams", payParams);
+    data.put("serverTime", Instant.now().toString());
+    return data;
   }
 
   public Map<String, Object> getOrderStatusForUser(AuthenticatedUser user, String outTradeNo, boolean refreshRemote) {

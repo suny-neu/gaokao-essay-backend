@@ -218,6 +218,7 @@ public class GaokaoProperties {
     private String code2SessionUrl = "https://api.weixin.qq.com/sns/jscode2session";
     private String stableTokenUrl = "https://api.weixin.qq.com/cgi-bin/stable_token";
     private String msgSecCheckUrl = "https://api.weixin.qq.com/wxa/msg_sec_check";
+    private String imgSecCheckUrl = "https://api.weixin.qq.com/wxa/img_sec_check";
 
     public String getAppId() {
       return appId;
@@ -266,6 +267,14 @@ public class GaokaoProperties {
     public void setMsgSecCheckUrl(String msgSecCheckUrl) {
       this.msgSecCheckUrl = msgSecCheckUrl;
     }
+
+    public String getImgSecCheckUrl() {
+      return imgSecCheckUrl;
+    }
+
+    public void setImgSecCheckUrl(String imgSecCheckUrl) {
+      this.imgSecCheckUrl = imgSecCheckUrl;
+    }
   }
 
   public static class Security {
@@ -282,6 +291,7 @@ public class GaokaoProperties {
     private boolean redisRequired;
     private long challengeTtlSeconds = 60L;
     private int challengePerMinute = 10;
+    private int paymentNotifyPerMinute = 60;
 
     public boolean isMsgSecEnabled() {
       return msgSecEnabled;
@@ -385,6 +395,14 @@ public class GaokaoProperties {
 
     public void setChallengePerMinute(int challengePerMinute) {
       this.challengePerMinute = challengePerMinute;
+    }
+
+    public int getPaymentNotifyPerMinute() {
+      return paymentNotifyPerMinute;
+    }
+
+    public void setPaymentNotifyPerMinute(int paymentNotifyPerMinute) {
+      this.paymentNotifyPerMinute = paymentNotifyPerMinute;
     }
   }
 

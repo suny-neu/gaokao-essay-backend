@@ -57,7 +57,9 @@ public class JwtTokenService {
 
     String signingInput = parts[0] + "." + parts[1];
     String expectedSignature = sign(signingInput);
-    if (!expectedSignature.equals(parts[2])) {
+    if (!java.security.MessageDigest.isEqual(
+        expectedSignature.getBytes(StandardCharsets.UTF_8),
+        parts[2].getBytes(StandardCharsets.UTF_8))) {
       throw unauthorized("登录态签名校验失败");
     }
 

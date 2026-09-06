@@ -103,8 +103,53 @@ public class WechatService {
     }
   }
 
-  private void doCheckMessageSecurity(String openId, String text, String label) {
+  /**
+   * 调用微信 img_sec_check 对用户上传的图片做内容安全审核。
+   * 仅在 msgSecEnabled 开启时生效。
+   */
+  public void checkImageSecurity(byte[] imageBytes, String label) {
+    if (!isMsgSecEnabled()) {
+      return;
+    }
+    if (imageBytes == null || imageBytes.length == 0) {
+      return;
+    }
+    if (!hasCode2SessionConfig()) {
+      throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "IMG_SEC_NOT_READY", "图片安全检查已开启，但微信配置还未补齐");
+    }
     try {
+      String accessToken = getAccessToken();
+      String boundary = "----GaokaoEssay" + java.util.UUID.randomUUID().toString().replace("-", "");
+      java.io.ByteArrayOutputStream bodyBuffer = new java.io.ByteArrayOutputStream();
+      bodyBuffer.write(("--" + boundary + "\r\n"
+          + "Content-Disposition: form-data; name=\"media\"; filename=\"upload.jpg\"\r\n"
+          + "Content-Type: application/octet-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+      bodyBuffer.write(imageBytes);
+      bodyBuffer.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+
+      HttpRequest request = HttpRequest.newBuilder(URI.create(properties.getWechat().getImgSecCheckUrl() + "?access_token=" + encode(accessToken)))
+          .timeout(Duration.ofSeconds(15))
+          .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+          .POST(HttpRequest.BodyPublishers.ofByteArray(bodyBuffer.toByteArray()))
+          .build();
+      HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+      JsonNode root = objectMapper.readTree(response.body());
+      int errCode = root.path("errcode").asInt(-1);
+      if (errCode == 0) {
+        return;
+      }
+      String errMessage = root.path("errmsg").asText("imgSecCheck rejected");
+      if (List.of(87014, 89401, 20001).contains(errCode)) {
+        throw new ApiException(HttpStatus.BAD_REQUEST, "CONTENT_NOT_ALLOWED", label + "包含平台不允许的内容，请更换后再试");
+      }
+      throw new ApiException(HttpStatus.BAD_GATEWAY, "IMG_SEC_FAILED", "图片安全检查失败：" + errMessage);
+    } catch (IOException | InterruptedException error) {
+      Thread.currentThread().interrupt();
+      throw new ApiException(HttpStatus.BAD_GATEWAY, "IMG_SEC_UNREACHABLE", "图片安全检查暂时不可用，请稍后再试");
+    }
+  }
+
+  private void doCheckMessageSecurity(String openId, String text, String label) {    try {
       String accessToken = getAccessToken();
       Map<String, Object> body = new LinkedHashMap<>();
       body.put("openid", TextUtils.isBlank(openId) ? "system" : openId);

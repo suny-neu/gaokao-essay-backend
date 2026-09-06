@@ -49,6 +49,36 @@ public class StateStorePaymentOrderRepository implements PaymentOrderRepository 
   }
 
   @Override
+  public Optional<PaymentOrder> findLatestPendingByUserId(String userId, String planCode) {
+    return stateStore.read(state -> state.paymentOrders.values().stream()
+        .filter(snapshot -> userId.equals(snapshot.userId))
+        .filter(snapshot -> planCode.equals(snapshot.planCode))
+        .filter(snapshot -> "CREATED".equals(snapshot.status) || "PREPAY_CREATED".equals(snapshot.status))
+        .max(java.util.Comparator.comparing(snapshot -> snapshot.createdAt == null ? "" : snapshot.createdAt))
+        .map(snapshot -> new PaymentOrder(
+            snapshot.outTradeNo,
+            snapshot.orderId,
+            snapshot.userId,
+            snapshot.openId,
+            snapshot.planCode,
+            snapshot.planName,
+            snapshot.amountFen,
+            snapshot.currency,
+            snapshot.status,
+            snapshot.autoRenew,
+            snapshot.description,
+            snapshot.prepayId,
+            snapshot.transactionId,
+            snapshot.provider,
+            snapshot.providerReference,
+            snapshot.payloadJson,
+            parseNullableInstant(snapshot.paidAt),
+            parseInstant(snapshot.createdAt),
+            parseInstant(snapshot.updatedAt)
+        )));
+  }
+
+  @Override
   public PaymentOrder save(PaymentOrder paymentOrder) {
     stateStore.write(state -> {
       AppState.PaymentOrderState snapshot = new AppState.PaymentOrderState();

@@ -8,6 +8,7 @@ import com.gaokao.essay.backend.service.AccountDeletionService;
 import com.gaokao.essay.backend.service.MembershipService;
 import com.gaokao.essay.backend.service.GrowthProfileService;
 import com.gaokao.essay.backend.service.DashboardService;
+import com.gaokao.essay.backend.service.RequestSecurityService;
 import com.gaokao.essay.backend.service.SessionService;
 import com.gaokao.essay.backend.service.StudyProfileService;
 import com.gaokao.essay.backend.util.TextUtils;
@@ -33,6 +34,7 @@ public class AccountController {
   private final GrowthProfileService growthProfileService;
   private final DashboardService dashboardService;
   private final AccountDeletionService accountDeletionService;
+  private final RequestSecurityService requestSecurityService;
 
   public AccountController(
       SessionService sessionService,
@@ -40,7 +42,8 @@ public class AccountController {
       StudyProfileService studyProfileService,
       GrowthProfileService growthProfileService,
       DashboardService dashboardService,
-      AccountDeletionService accountDeletionService
+      AccountDeletionService accountDeletionService,
+      RequestSecurityService requestSecurityService
   ) {
     this.sessionService = sessionService;
     this.membershipService = membershipService;
@@ -48,6 +51,7 @@ public class AccountController {
     this.growthProfileService = growthProfileService;
     this.dashboardService = dashboardService;
     this.accountDeletionService = accountDeletionService;
+    this.requestSecurityService = requestSecurityService;
   }
 
   @GetMapping("/entitlement")
@@ -89,8 +93,8 @@ public class AccountController {
       @org.springframework.web.bind.annotation.RequestBody(required = false) AdRewardClaimRequest claimRequest
   ) {
     AuthenticatedUser user = sessionService.requireUser(request, authorizationHeader, null);
-    String deviceId = TextUtils.trimToEmpty(deviceIdHeader);
-    String clientIp = TextUtils.trimToEmpty(request.getRemoteAddr());
+    String deviceId = requestSecurityService.requireDeviceId(deviceIdHeader);
+    String clientIp = RequestSecurityService.resolveClientIpStatic(request);
     String nonce = claimRequest == null ? "" : TextUtils.trimToEmpty(claimRequest.getNonce());
     return ApiResponse.ok(membershipService.grantAdReward(user, deviceId, clientIp, nonce));
   }

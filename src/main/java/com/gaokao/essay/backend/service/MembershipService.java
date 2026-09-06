@@ -32,6 +32,7 @@ public class MembershipService {
 
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
   private static final Base64.Encoder URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
+  private static final int MAX_DAILY_FAILURE_REFUNDS = 10;
 
   private final GaokaoProperties properties;
   private final UserUsageQuotaRepository userUsageQuotaRepository;
@@ -177,6 +178,28 @@ public class MembershipService {
     rollbackAbuseKeys(reservation.abuseKeys());
   }
 
+  /**
+   * 任务失败时退还配额。
+   *
+   * <p>为避免恶意用户构造必败请求来无限刷 AI 调用，退还动作本身受
+   * 「每用户每日失败退还上限」约束（该计数不回滚）。</p>
+   */
+  public boolean releaseReservationOnFailure(UsageReservation reservation) {
+    if (reservation == null || !reservation.countedTrial()) {
+      return false;
+    }
+    Instant now = clock.instant();
+    String date = LocalDate.ofInstant(now, resolveQuotaZoneId()).toString();
+    String key = "essay-fail-refund-day:" + date + ":" + TextUtils.sha256(reservation.userId()).substring(0, 32);
+    boolean refundAllowed = abuseProtectionStore.tryConsume(
+        key, MAX_DAILY_FAILURE_REFUNDS, Duration.between(now, nextQuotaResetAt(now)));
+    if (!refundAllowed) {
+      return false;
+    }
+    releaseReservation(reservation);
+    return true;
+  }
+
   public Map<String, Object> grantAdReward(AuthenticatedUser user, String deviceId, String clientIp) {
     throw new ApiException(HttpStatus.FORBIDDEN, "AD_REWARD_CLAIM_REQUIRED", "请先领取广告播放凭证后再结算奖励");
   }
@@ -238,6 +261,15 @@ public class MembershipService {
         && userUsageQuotaRepository.tryConsume(user.userId(), dailyQuotaType, dailyMax);
     if (dailyMax > 0 && !consumedDailyReward) {
       throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "AD_REWARD_DAILY_LIMIT_REACHED", "今日看广告次数已达上限");
+    }
+
+    int cooldownSeconds = adRewardConfig.getCooldownSeconds();
+    if (cooldownSeconds > 0) {
+      String cooldownSubject = !TextUtils.isBlank(deviceId) ? deviceId : user.userId();
+      String cooldownKey = "ad-reward-cooldown:" + TextUtils.sha256(cooldownSubject).substring(0, 32);
+      if (!abuseProtectionStore.tryConsume(cooldownKey, 1, Duration.ofSeconds(cooldownSeconds))) {
+        throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "AD_REWARD_COOLDOWN", "领取太频繁，请稍后再试");
+      }
     }
 
     int grantAmount = adRewardConfig.getCreditPerView();

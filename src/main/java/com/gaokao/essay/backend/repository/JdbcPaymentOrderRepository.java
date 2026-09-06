@@ -42,6 +42,26 @@ public class JdbcPaymentOrderRepository implements PaymentOrderRepository {
   }
 
   @Override
+  public Optional<PaymentOrder> findLatestPendingByUserId(String userId, String planCode) {
+    List<PaymentOrder> results = jdbcTemplate.query(
+        """
+        SELECT out_trade_no, order_id, user_id, open_id, plan_code, plan_name,
+               amount_fen, currency, status, auto_renew, description, prepay_id,
+               transaction_id, provider, provider_reference, payload_json,
+               paid_at, created_at, updated_at
+        FROM payment_order
+        WHERE user_id = ? AND plan_code = ? AND status IN ('CREATED', 'PREPAY_CREATED')
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (resultSet, rowNum) -> mapRow(resultSet),
+        userId,
+        planCode
+    );
+    return results.stream().findFirst();
+  }
+
+  @Override
   public PaymentOrder save(PaymentOrder paymentOrder) {
     int updatedRows = jdbcTemplate.update(
         """

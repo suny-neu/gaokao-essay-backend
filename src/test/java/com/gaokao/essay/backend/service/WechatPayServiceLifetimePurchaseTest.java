@@ -91,5 +91,13 @@ class WechatPayServiceLifetimePurchaseTest {
       store.put(paymentOrder.outTradeNo(), paymentOrder);
       return paymentOrder;
     }
+
+    @Override
+    public Optional<PaymentOrder> findLatestPendingByUserId(String userId, String planCode) {
+      return store.values().stream()
+          .filter(order -> userId.equals(order.userId()) && planCode.equals(order.planCode()))
+          .filter(order -> "CREATED".equals(order.status()) || "PREPAY_CREATED".equals(order.status()))
+          .findFirst();
+    }
   }
 }

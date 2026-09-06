@@ -5,4 +5,7 @@ deploy/lighthouse/.env
 *.log
 supabase/.temp/
 .DS_Store
-/data/runtime-state.json
+
+# 运行时状态（含用户数据，不入库）
+data/
+

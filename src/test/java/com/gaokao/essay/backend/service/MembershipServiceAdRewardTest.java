@@ -322,7 +322,26 @@ class MembershipServiceAdRewardTest {
     properties.getMembership().getAdReward().setDailyMax(5);
     properties.getMembership().getAdReward().setMaxCredits(50);
     properties.getMembership().getAdReward().setClaimNotBeforeSeconds(0);
+    // 单测默认关闭冷却，避免固定时钟下连续领取被拦截；冷却行为由专门用例覆盖
+    properties.getMembership().getAdReward().setCooldownSeconds(0);
     return properties;
+  }
+
+  @Test
+  void shouldEnforceCooldownBetweenAdRewardGrants() {
+    GaokaoProperties properties = newProperties();
+    properties.getMembership().getAdReward().setCooldownSeconds(60);
+    InMemoryQuotaRepository quotaRepository = new InMemoryQuotaRepository();
+    MembershipService service = serviceAt(properties, quotaRepository, Instant.parse("2026-07-10T10:00:00Z"));
+
+    Map<String, Object> first = settleAdReward(service, "user_cd", "device_cd", "127.0.0.1");
+    assertEquals(1, first.get("granted"));
+
+    ApiException error = assertThrows(
+        ApiException.class,
+        () -> settleAdReward(service, "user_cd", "device_cd", "127.0.0.1")
+    );
+    assertEquals("AD_REWARD_COOLDOWN", error.getCode());
   }
 
   private MembershipService serviceAt(

@@ -88,6 +88,10 @@ public class AiGatewayService {
   }
 
   public String requestJsonText(String systemPrompt, String userPrompt) {
+    return requestJsonText(systemPrompt, userPrompt, properties.getAi().getTimeoutSeconds());
+  }
+
+  public String requestJsonText(String systemPrompt, String userPrompt, int timeoutSeconds) {
     ensureTextReady();
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("model", properties.getAi().getModel());
@@ -96,7 +100,7 @@ public class AiGatewayService {
         message("system", systemPrompt),
         message("user", userPrompt)
     ));
-    return invokeOpenAiCompatible(resolveBaseUrl(false), resolveApiKey(false), properties.getAi().getTimeoutSeconds(), body);
+    return invokeOpenAiCompatible(resolveBaseUrl(false), resolveApiKey(false), timeoutSeconds, body);
   }
 
   public String requestVisionOcr(String mimeType, String base64Content, String scene) {

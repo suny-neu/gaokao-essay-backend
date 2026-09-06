@@ -55,6 +55,10 @@ public class RequestSecurityService {
     checkByIp(request, "challenge-ip", properties.getSecurity().getChallengePerMinute(), 60, "验证请求过于频繁，请稍后再试");
   }
 
+  public void checkPaymentNotify(HttpServletRequest request) {
+    checkByIp(request, "pay-notify-ip", properties.getSecurity().getPaymentNotifyPerMinute(), 60, "回调请求过于频繁");
+  }
+
   private void checkByIp(HttpServletRequest request, String scope, int limit, int windowSeconds, String message) {
     check(scope, resolveClientIp(request), limit, windowSeconds, message);
   }

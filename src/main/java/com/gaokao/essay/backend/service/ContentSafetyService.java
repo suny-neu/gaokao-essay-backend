@@ -26,4 +26,8 @@ public class ContentSafetyService {
   public void verifyOcrText(String openId, String text) {
     wechatService.checkMessageSecurity(openId, text, "OCR 识别文本");
   }
+
+  public void verifyImage(byte[] imageBytes, String label) {
+    wechatService.checkImageSecurity(imageBytes, label);
+  }
 }

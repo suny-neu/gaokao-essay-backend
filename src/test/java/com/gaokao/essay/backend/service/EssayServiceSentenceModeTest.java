@@ -56,7 +56,7 @@ class EssayServiceSentenceModeTest {
 
     ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
     verify(aiGatewayService).requestJsonText(anyString(), prompt.capture());
-    verify(membershipService).releaseReservation(reservation);
+    verify(membershipService).releaseReservationOnFailure(reservation);
     assertThat(prompt.getValue())
         .contains("未发现真实错误")
         .contains("不得把可选升级说成错误");

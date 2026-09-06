@@ -17,6 +17,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class EssayService {
 
+  /** JSON 修复调用是兜底链路，用更短的超时避免整体耗时突破小程序端 120s 请求超时。 */
+  private static final int REPAIR_TIMEOUT_SECONDS = 30;
+
   private final MembershipService membershipService;
   private final ContentSafetyService contentSafetyService;
   private final HistoryService historyService;
@@ -86,9 +89,8 @@ public class EssayService {
       String streamText = resolveStreamText(claimedRecord);
       return new EssayExecution(claimedRecord, streamText);
     } catch (RuntimeException error) {
-      if (reservation != null) {
-        membershipService.releaseReservation(reservation);
-      }
+      // 任务未产出结果时不消耗用户配额（退还次数受每日失败退还上限约束，防止刷 AI 成本）
+      membershipService.releaseReservationOnFailure(reservation);
       markFailedRecord(claimedRecord);
       historyService.saveRecord(claimedRecord);
       throw error;
@@ -335,7 +337,8 @@ public class EssayService {
       String repaired = aiGatewayService.requestJsonText(
           "你是高考英语作文批改结果修复器。你的唯一任务是把已有批改结果整理成严格 JSON。"
               + "不得改题型，不得乱换结论，不得输出 JSON 之外的任何内容。",
-          buildGradeRepairPrompt(rawResponse, request)
+          buildGradeRepairPrompt(rawResponse, request),
+          REPAIR_TIMEOUT_SECONDS
       );
       return parseJsonNode(repaired);
     } catch (RuntimeException error) {

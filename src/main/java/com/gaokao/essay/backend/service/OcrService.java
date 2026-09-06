@@ -55,6 +55,7 @@ public class OcrService {
     try {
       byte[] bytes = file.getBytes();
       validateImageFile(file, bytes);
+      contentSafetyService.verifyImage(bytes, "上传图片");
       String mimeType = resolveMimeType(file, bytes);
       String normalizedScene = normalizeScene(scene);
       String base64 = Base64.getEncoder().encodeToString(bytes);

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -124,7 +125,9 @@ class EssayServiceIdempotencyTest {
     when(membershipService.reserveEssayAccess(user))
         .thenReturn(MembershipService.UsageReservation.trial(user.userId(), List.of("ESSAY_TOTAL")));
     when(aiGatewayService.requestJsonText(anyString(), anyString()))
-        .thenReturn("{\"content\":\"缺少批改字段\"}", validRepairedGradeJson());
+        .thenReturn("{\"content\":\"缺少批改字段\"}");
+    when(aiGatewayService.requestJsonText(anyString(), anyString(), anyInt()))
+        .thenReturn(validRepairedGradeJson());
 
     EssayService.EssayExecution first = essayService.execute(user, request);
     EssayService.EssayExecution second = essayService.execute(user, request);
@@ -135,12 +138,14 @@ class EssayServiceIdempotencyTest {
     assertEquals("NONE", diagnosis.errorType);
     assertEquals(false, diagnosis.legacyInferred);
     verify(membershipService, times(1)).reserveEssayAccess(user);
-    verify(aiGatewayService, times(2)).requestJsonText(anyString(), anyString());
+    verify(aiGatewayService, times(1)).requestJsonText(anyString(), anyString());
 
     ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-    verify(aiGatewayService, times(2)).requestJsonText(anyString(), promptCaptor.capture());
-    String initialPrompt = promptCaptor.getAllValues().get(0);
-    String repairPrompt = promptCaptor.getAllValues().get(1);
+    verify(aiGatewayService).requestJsonText(anyString(), promptCaptor.capture());
+    String initialPrompt = promptCaptor.getValue();
+    ArgumentCaptor<String> repairPromptCaptor = ArgumentCaptor.forClass(String.class);
+    verify(aiGatewayService).requestJsonText(anyString(), repairPromptCaptor.capture(), anyInt());
+    String repairPrompt = repairPromptCaptor.getValue();
     assertTrue(initialPrompt.contains("重复单调"));
     assertTrue(initialPrompt.contains("简单句堆砌"));
     assertTrue(initialPrompt.contains("中式英语"));
