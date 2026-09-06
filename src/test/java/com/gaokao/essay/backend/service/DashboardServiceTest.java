@@ -3,6 +3,7 @@ package com.gaokao.essay.backend.service;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +34,8 @@ class DashboardServiceTest {
     List<AppState.EssayRecord> records = List.of(record("grade", "application", "12分 / 15"));
     when(essayRecordRepository.findRecentDashboardByUserId("user-1"))
         .thenReturn(records);
+    when(membershipService.getEntitlement(any()))
+        .thenReturn(java.util.Map.of("subscriptionActive", false));
 
     service.build(user(), "application");
 
@@ -40,6 +43,25 @@ class DashboardServiceTest {
     verify(essayRecordRepository, never()).findRecentByUserId(any(), Mockito.anyInt(), Mockito.anyInt(), any(), any(), any());
     verify(growthProfileService).buildFromRecords(records, "application");
     verify(growthProfileService, never()).load(any(), eq("application"));
+  }
+
+  @Test
+  void servesCachedDashboardUntilInvalidated() {
+    List<AppState.EssayRecord> records = List.of(record("grade", "application", "12分 / 15"));
+    when(essayRecordRepository.findRecentDashboardByUserId("user-1")).thenReturn(records);
+    when(membershipService.getEntitlement(any()))
+        .thenReturn(java.util.Map.of("subscriptionActive", false));
+
+    service.build(user(), "application");
+    service.build(user(), "application");
+    // 第二次命中缓存：数据库与权益服务只被调用一次
+    verify(essayRecordRepository, times(1)).findRecentDashboardByUserId("user-1");
+    verify(membershipService, times(1)).getEntitlement(any());
+
+    service.onDashboardInvalidation(new DashboardInvalidationEvent("user-1"));
+    service.build(user(), "application");
+    // 失效后重新查询
+    verify(essayRecordRepository, times(2)).findRecentDashboardByUserId("user-1");
   }
 
   private AuthenticatedUser user() {

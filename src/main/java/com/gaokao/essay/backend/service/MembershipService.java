@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -40,14 +41,28 @@ public class MembershipService {
   private final Clock clock;
   private final AbuseProtectionStore abuseProtectionStore;
 
-  @Autowired
+  private final ApplicationEventPublisher eventPublisher;
+
+  /** 测试便捷构造：不发布事件 */
   public MembershipService(
       GaokaoProperties properties,
       UserUsageQuotaRepository userUsageQuotaRepository,
       UserSubscriptionRepository userSubscriptionRepository,
       AbuseProtectionStore abuseProtectionStore
   ) {
-    this(properties, userUsageQuotaRepository, userSubscriptionRepository, abuseProtectionStore, Clock.systemUTC());
+    this(properties, userUsageQuotaRepository, userSubscriptionRepository, abuseProtectionStore, Clock.systemUTC(), null);
+  }
+
+  @Autowired
+  public MembershipService(
+      GaokaoProperties properties,
+      UserUsageQuotaRepository userUsageQuotaRepository,
+      UserSubscriptionRepository userSubscriptionRepository,
+      AbuseProtectionStore abuseProtectionStore,
+      ApplicationEventPublisher eventPublisher
+  ) {
+    this(properties, userUsageQuotaRepository, userSubscriptionRepository, abuseProtectionStore,
+        Clock.systemUTC(), eventPublisher);
   }
 
   MembershipService(
@@ -57,10 +72,22 @@ public class MembershipService {
       AbuseProtectionStore abuseProtectionStore,
       Clock clock
   ) {
+    this(properties, userUsageQuotaRepository, userSubscriptionRepository, abuseProtectionStore, clock, null);
+  }
+
+  MembershipService(
+      GaokaoProperties properties,
+      UserUsageQuotaRepository userUsageQuotaRepository,
+      UserSubscriptionRepository userSubscriptionRepository,
+      AbuseProtectionStore abuseProtectionStore,
+      Clock clock,
+      ApplicationEventPublisher eventPublisher
+  ) {
     this.properties = properties;
     this.userUsageQuotaRepository = userUsageQuotaRepository;
     this.userSubscriptionRepository = userSubscriptionRepository;
     this.abuseProtectionStore = abuseProtectionStore;
+    this.eventPublisher = eventPublisher;
     this.clock = clock;
   }
 
@@ -314,6 +341,7 @@ public class MembershipService {
     result.put("adRewardMaxCredits", adRewardConfig.getMaxCredits());
     result.put("adRewardDailyLimit", dailyMax);
     result.put("adRewardDailyUsed", resolveAdRewardDailyUsed(user.userId(), now));
+    publishDashboardInvalidation(user.userId());
     return result;
   }
 
@@ -379,6 +407,7 @@ public class MembershipService {
         now
     );
     userSubscriptionRepository.savePreservingActiveFounderLifetime(subscription, now);
+    publishDashboardInvalidation(user.userId());
     return toMap(buildSnapshot(user.userId(), now));
   }
 
@@ -416,7 +445,9 @@ public class MembershipService {
         providerReference,
         activatedAt
     );
-    return userSubscriptionRepository.savePreservingActiveFounderLifetime(subscription, activatedAt);
+    UserSubscription saved = userSubscriptionRepository.savePreservingActiveFounderLifetime(subscription, activatedAt);
+    publishDashboardInvalidation(userId);
+    return saved;
   }
 
   private Map<String, Object> toMap(UserEntitlementSnapshot snapshot) {
@@ -461,6 +492,12 @@ public class MembershipService {
         .findByUserIdAndQuotaType(userId, buildAdRewardDailyQuotaType(now))
         .map(quota -> Math.max(quota.usedCount(), 0))
         .orElse(0);
+  }
+
+  private void publishDashboardInvalidation(String userId) {
+    if (eventPublisher != null && !TextUtils.isBlank(userId)) {
+      eventPublisher.publishEvent(new DashboardInvalidationEvent(userId));
+    }
   }
 
   private UserEntitlementSnapshot buildSnapshot(String userId, Instant now) {

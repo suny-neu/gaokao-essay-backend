@@ -7,6 +7,8 @@ import com.gaokao.essay.backend.store.AppState;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -14,13 +16,29 @@ import org.springframework.stereotype.Service;
 public class HistoryService {
 
   private final EssayRecordRepository essayRecordRepository;
+  private final ApplicationEventPublisher eventPublisher;
 
-  public HistoryService(EssayRecordRepository essayRecordRepository) {
+  @Autowired
+  public HistoryService(EssayRecordRepository essayRecordRepository, ApplicationEventPublisher eventPublisher) {
     this.essayRecordRepository = essayRecordRepository;
+    this.eventPublisher = eventPublisher;
+  }
+
+  /** 测试便捷构造：不发布事件 */
+  public HistoryService(EssayRecordRepository essayRecordRepository) {
+    this(essayRecordRepository, null);
   }
 
   public AppState.EssayRecord saveRecord(AppState.EssayRecord record) {
-    return essayRecordRepository.save(record);
+    AppState.EssayRecord saved = essayRecordRepository.save(record);
+    publishInvalidation(record.userId);
+    return saved;
+  }
+
+  private void publishInvalidation(String userId) {
+    if (eventPublisher != null && userId != null && !userId.isEmpty()) {
+      eventPublisher.publishEvent(new DashboardInvalidationEvent(userId));
+    }
   }
 
   public AppState.EssayRecord findOrCreatePendingRecord(AppState.EssayRecord record) {
@@ -61,6 +79,9 @@ public class HistoryService {
 
   public Map<String, Object> deleteRecord(AuthenticatedUser user, String id) {
     int affectedCount = essayRecordRepository.deleteByIdAndUserId(id, user.userId());
+    if (affectedCount > 0) {
+      publishInvalidation(user.userId());
+    }
     if (affectedCount == 0) {
       throw new ApiException(HttpStatus.NOT_FOUND, "HISTORY_NOT_FOUND", "未找到对应历史记录");
     }

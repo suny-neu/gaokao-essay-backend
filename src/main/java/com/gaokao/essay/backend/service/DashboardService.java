@@ -13,11 +13,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalDouble;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,10 +35,18 @@ public class DashboardService {
   private static final Pattern SCORE_PATTERN =
       Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*(?:分)?\\s*/\\s*(\\d+(?:\\.\\d+)?)");
 
+  private static final long CACHE_TTL_MILLIS = 20_000;
+
   private final MembershipService membershipService;
   private final GrowthProfileService growthProfileService;
   private final EssayRecordRepository essayRecordRepository;
   private final Clock clock;
+  private final Map<String, CachedDashboard> dashboardCache = new ConcurrentHashMap<>();
+  private final ExecutorService dashboardExecutor = Executors.newFixedThreadPool(2, runnable -> {
+    Thread thread = new Thread(runnable, "dashboard-query");
+    thread.setDaemon(true);
+    return thread;
+  });
 
   @Autowired
   public DashboardService(
@@ -59,20 +72,42 @@ public class DashboardService {
   public Map<String, Object> build(AuthenticatedUser user, String requestedEssayType) {
     long startedAt = System.nanoTime();
     String essayType = normalizeEssayType(requestedEssayType);
-    List<AppState.EssayRecord> records = essayRecordRepository.findRecentDashboardByUserId(user.userId());
+    String cacheKey = user.userId() + ':' + essayType;
+    CachedDashboard cached = dashboardCache.get(cacheKey);
+    long nowEpochMilli = clock.instant().toEpochMilli();
+    if (cached != null && cached.expiresAtEpochMilli() > nowEpochMilli) {
+      LOGGER.info("Dashboard timing cacheHit=true totalMs=0");
+      return new LinkedHashMap<>(cached.data());
+    }
+
+    // 记录查询与权益查询互不依赖，并行执行以隐藏数据库往返延迟
+    CompletableFuture<List<AppState.EssayRecord>> recordsFuture = CompletableFuture.supplyAsync(
+        () -> essayRecordRepository.findRecentDashboardByUserId(user.userId()),
+        dashboardExecutor
+    );
+    CompletableFuture<Map<String, Object>> entitlementFuture = CompletableFuture.supplyAsync(
+        () -> membershipService.getEntitlement(user),
+        dashboardExecutor
+    );
+
+    List<AppState.EssayRecord> records = recordsFuture.join();
     long recordsCompletedAt = System.nanoTime();
     GrowthProfile growth = growthProfileService.buildFromRecords(records, essayType);
     long growthCompletedAt = System.nanoTime();
 
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("essayType", essayType);
-    data.put("generatedAt", clock.instant().toEpochMilli());
-    data.put("entitlement", membershipService.getEntitlement(user));
+    data.put("generatedAt", nowEpochMilli);
+    data.put("entitlement", entitlementFuture.join());
     long entitlementCompletedAt = System.nanoTime();
     data.put("growth", growth);
     data.put("weekly", buildWeeklyMetric(records, essayType));
     data.put("streak", buildStreak(records));
     long completedAt = System.nanoTime();
+    dashboardCache.put(cacheKey, new CachedDashboard(
+        nowEpochMilli + CACHE_TTL_MILLIS,
+        java.util.Collections.unmodifiableMap(new LinkedHashMap<>(data))
+    ));
     LOGGER.info(
         "Dashboard timing recordsMs={} growthMs={} entitlementMs={} metricsMs={} totalMs={} recordCount={}",
         elapsedMillis(startedAt, recordsCompletedAt),
@@ -83,6 +118,23 @@ public class DashboardService {
         records.size()
     );
     return data;
+  }
+
+  @EventListener
+  public void onDashboardInvalidation(DashboardInvalidationEvent event) {
+    evictUser(event.userId());
+  }
+
+  /** 用户产生新记录 / 删除记录 / 会员或广告额度变化时调用，使缓存立刻失效 */
+  public void evictUser(String userId) {
+    if (userId == null || userId.isEmpty()) {
+      return;
+    }
+    String prefix = userId + ':';
+    dashboardCache.keySet().removeIf(key -> key.startsWith(prefix));
+  }
+
+  private record CachedDashboard(long expiresAtEpochMilli, Map<String, Object> data) {
   }
 
   private long elapsedMillis(long startedAt, long completedAt) {

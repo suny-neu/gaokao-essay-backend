@@ -25,8 +25,14 @@ public class JdbcStorageConfig {
     config.setJdbcUrl(database.getUrl());
     config.setUsername(database.getUsername());
     config.setPassword(database.getPassword());
-    config.setMaximumPoolSize(5);
-    config.setMinimumIdle(1);
+    config.setMaximumPoolSize(8);
+    config.setMinimumIdle(2);
+    // 远程数据库（云数据库 / 连接池中间层）常会杀空闲连接，保活避免每次请求都付出重连握手代价
+    config.setKeepaliveTime(30000);
+    config.setMaxLifetime(240000);
+    config.setIdleTimeout(120000);
+    config.setConnectionTimeout(10000);
+    config.setValidationTimeout(3000);
     config.setInitializationFailTimeout(-1);
     return new HikariDataSource(config);
   }
