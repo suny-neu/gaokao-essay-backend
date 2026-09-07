@@ -241,10 +241,12 @@ public class EssayService {
       }
     }
     if (root == null) {
-      record.content = rawResponse.trim();
-      record.wordCount = TextUtils.countEnglishWords(record.content);
-      record.scoreText = "待人工复核";
-      return;
+      // AI 输出无法解析且修复失败：标记失败并退还配额，绝不能给用户存出"空报告"
+      throw new ApiException(
+          HttpStatus.BAD_GATEWAY,
+          "GRADE_RESULT_INVALID",
+          "AI 批改结果格式异常，请重新提交一次（本次不扣次数）"
+      );
     }
 
     JsonNode analysisNode = root.path("analysis");

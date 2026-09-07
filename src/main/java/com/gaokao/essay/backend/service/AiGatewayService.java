@@ -96,6 +96,11 @@ public class AiGatewayService {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("model", properties.getAi().getModel());
     body.put("temperature", properties.getAi().getTemperature());
+    // 强制 JSON 输出，避免模型返回散文导致批改结果解析失败（OpenAI 兼容服务普遍支持；
+    // 若所用服务不支持该参数，设 GAOKAO_AI_JSON_MODE=false 关闭）
+    if (properties.getAi().isJsonMode()) {
+      body.put("response_format", java.util.Map.of("type", "json_object"));
+    }
     body.put("messages", List.of(
         message("system", systemPrompt),
         message("user", userPrompt)

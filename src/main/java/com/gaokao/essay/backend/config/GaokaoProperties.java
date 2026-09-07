@@ -411,6 +411,7 @@ public class GaokaoProperties {
     private String apiKey = "";
     private String model = "";
     private String providerName = "openai-compatible";
+    private boolean jsonMode = true;
     private double temperature = 0.7D;
     private int timeoutSeconds = 90;
 
@@ -444,6 +445,14 @@ public class GaokaoProperties {
 
     public void setProviderName(String providerName) {
       this.providerName = providerName;
+    }
+
+    public boolean isJsonMode() {
+      return jsonMode;
+    }
+
+    public void setJsonMode(boolean jsonMode) {
+      this.jsonMode = jsonMode;
     }
 
     public double getTemperature() {

@@ -60,6 +60,7 @@ gaokao:
     api-key: ${GAOKAO_AI_API_KEY:}
     model: ${GAOKAO_AI_MODEL:}
     provider-name: ${GAOKAO_AI_PROVIDER:openai-compatible}
+    json-mode: ${GAOKAO_AI_JSON_MODE:true}
     temperature: ${GAOKAO_AI_TEMPERATURE:0.7}
     timeout-seconds: ${GAOKAO_AI_TIMEOUT_SECONDS:90}
   ocr:
